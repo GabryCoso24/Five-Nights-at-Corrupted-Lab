@@ -1,5 +1,5 @@
 # modules/orario.py
-DURATA_NOTTE_MS = 60000  # 2 minuti reali: 12 AM -> 6 AM
+DURATA_NOTTE_MS = 120000  # 2 minuti reali: 12 AM -> 6 AM
 
 
 class Orario:
