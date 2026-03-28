@@ -218,6 +218,7 @@ def build_default_manager() -> AnimatronicsManager:
 		Animatronic(name="Chugginton", route=routes_by_side["right"], base_move_chance=0.20),
 		Animatronic(name="Linux", route=routes_by_side["left"], base_move_chance=0.18),
 		Animatronic(name="Luca", route=routes_by_side["right"], base_move_chance=0.17),
+		Animatronic(name="McQeen", route=routes_by_side["left"], base_move_chance=0.20),
 	]
 	manager = AnimatronicsManager(roster, routes_by_side=routes_by_side)
 	manager.reset()

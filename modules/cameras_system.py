@@ -31,6 +31,7 @@ class VideoCamere:
         self._cam_map_surface = None
         self._cam_map_vent_surface = None
         self._active_map = "main"
+        self._threat_sprites_by_camera = {}
         self._map_toggle_rect = pygame.Rect(0, 0, 0, 0)
         self._cam_switch_sound = os.path.join("assets", "audio", "switch_cam_sound.wav")
         self._cam_switch_sound_obj = None
@@ -135,6 +136,9 @@ class VideoCamere:
 
     def set_threat_sprite(self, sprite_surface):
         self._threat_sprite = sprite_surface
+
+    def set_threats_by_camera(self, threats_dict):
+        self._threat_sprites_by_camera = threats_dict or {}
 
     def register_movement(self, from_camera, to_camera, jam_duration_ms=1400):
         now_ms = pygame.time.get_ticks()
@@ -519,6 +523,30 @@ class VideoCamere:
 
             warning = self.label_font.render("MOVIMENTO RILEVATO", True, (255, 90, 90))
             surface.blit(warning, warning.get_rect(topright=(feed_area.right - 12, feed_area.top + 16)))
+
+            warning = self.label_font.render("MOVIMENTO RILEVATO", True, (255, 90, 90))
+            surface.blit(warning, warning.get_rect(topright=(feed_area.right - 12, feed_area.top + 16)))
+        elif (not active_jammed) and active_camera_id in self._threat_sprites_by_camera:
+            sprite_list = self._threat_sprites_by_camera[active_camera_id]
+            if sprite_list:
+                base_sprite_h = int(feed_area.height * 0.55)
+                positions = [(feed_area.left + int(feed_area.width * 0.25), feed_area.bottom - base_sprite_h),
+                             (feed_area.left + int(feed_area.width * 0.65), feed_area.bottom - base_sprite_h - 20)]
+                for idx, sprite_surface in enumerate(sprite_list):
+                    sprite_h = base_sprite_h - (idx * 15)
+                    sprite_h = max(32, sprite_h)
+                    sprite_w = int(sprite_surface.get_width() * (sprite_h / max(1, sprite_surface.get_height())))
+                    sprite_w = max(32, min(sprite_w, int(feed_area.width * 0.45)))
+                    sprite = pygame.transform.smoothscale(sprite_surface, (sprite_w, sprite_h)).convert_alpha()
+                    sprite.set_alpha(220)
+                    jitter_x = random.randint(-8, 8)
+                    jitter_y = random.randint(-4, 4)
+                    pos = positions[idx % len(positions)]
+                    sprite_x = pos[0] - (sprite_w // 2) + jitter_x
+                    sprite_y = pos[1] + jitter_y
+                    surface.blit(sprite, (sprite_x, sprite_y))
+                warning = self.label_font.render("MOVIMENTO RILEVATO", True, (255, 90, 90))
+                surface.blit(warning, warning.get_rect(topright=(feed_area.right - 12, feed_area.top + 16)))
 
         pygame.draw.rect(surface, (168, 172, 178), feed_area, width=2)
 

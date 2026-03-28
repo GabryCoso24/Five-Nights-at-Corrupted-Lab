@@ -12,28 +12,41 @@ def load_enemy_sprites(folder=None):
         return sprites
 
     valid_ext = {".png", ".jpg", ".jpeg", ".webp", ".jfif"}
-    for filename in os.listdir(folder):
+    loaded_entries = []
+    keyword_to_canonical = {
+        "chugginton": "Chugginton",
+        "linux": "Linux",
+        "luca": "Luca",
+        "mcqeen": "McQeen",
+    }
+
+    for filename in sorted(os.listdir(folder)):
         ext = os.path.splitext(filename)[1].lower()
         if ext not in valid_ext:
             continue
 
-        key = os.path.splitext(filename)[0].lower()
-        if "chugginton" in key:
-            name = "Chugginton"
-        elif "linux" in key:
-            name = "Linux"
-        elif "luca" in key:
-            name = "Luca"
-        else:
-            continue
+        # Usa il nome file come chiave custom e crea alias canonici quando possibile.
+        stem = os.path.splitext(filename)[0]
+        custom_name = stem.replace("_", " ").replace("-", " ").strip()
 
         full_path = os.path.join(folder, filename)
         try:
-            sprites[name] = pygame.image.load(full_path).convert_alpha()
+            surface = pygame.image.load(full_path).convert_alpha()
         except Exception:
             try:
-                sprites[name] = pygame.image.load(full_path).convert()
+                surface = pygame.image.load(full_path).convert()
             except Exception:
-                pass
+                continue
+
+        if custom_name:
+            sprites[custom_name] = surface
+
+        lowered = stem.lower()
+        for keyword, canonical in keyword_to_canonical.items():
+            if keyword in lowered:
+                sprites[canonical] = surface
+                break
+
+        loaded_entries.append(surface)
 
     return sprites

@@ -126,6 +126,7 @@ class GameRenderingMixin:
                 self.flashlight_repel_triggered = True
                 self.flashlight_repel_feedback_until = now_ms + 360
                 self.audio.play_sound(self.flashlight_repel_sound, volume=0.7)
+                self.audio.play_sound(self.flashlight_hit_sound, volume=0.8)
 
         label = self.orologio.update(now_ms)
 
@@ -153,19 +154,27 @@ class GameRenderingMixin:
         threat_cameras = self.animatronics.get_cameras_with_presence()
         self.video_camere.set_threat_cameras(threat_cameras)
 
+        # Mostra tutti i nemici presenti nella camera corrente con sprite distinti.
+        threats_by_camera = {}
+        for name, camera_id in positions.items():
+            camera_slots = [camera_id]
+            if camera_id == "door_left":
+                camera_slots.append("cam1")
+            elif camera_id == "door_right":
+                camera_slots.append("cam14")
+
+            sprite = self.enemy_sprites.get(name, self.default_enemy_sprite)
+            if sprite is None:
+                continue
+
+            for slot in camera_slots:
+                threats_by_camera.setdefault(slot, []).append(sprite)
+
+        self.video_camere.set_threats_by_camera(threats_by_camera)
+
         if self.video_camere.is_open and watched_camera:
-            threat_name = None
-            for name, camera_id in positions.items():
-                if camera_id == watched_camera:
-                    threat_name = name
-                    break
-                if camera_id == "door_left" and watched_camera == "cam1":
-                    threat_name = name
-                    break
-                if camera_id == "door_right" and watched_camera == "cam14":
-                    threat_name = name
-                    break
-            self.video_camere.set_threat_sprite(self.enemy_sprites.get(threat_name, self.default_enemy_sprite))
+            first_sprite = threats_by_camera.get(watched_camera, [self.default_enemy_sprite])[0]
+            self.video_camere.set_threat_sprite(first_sprite)
         else:
             self.video_camere.set_threat_sprite(self.default_enemy_sprite)
 
@@ -213,7 +222,7 @@ class GameRenderingMixin:
     def draw_jumpscare(self):
         elapsed = pygame.time.get_ticks() - self.jumpscare_start_time
         if elapsed >= self.jumpscare_duration_ms:
-            self.enter_menu(play_click=False)
+            self._start_defeat_video()
             return
 
         self.screen.fill((0, 0, 0))
@@ -231,6 +240,59 @@ class GameRenderingMixin:
         name_label = self.font_hour.render(self.jumpscare_name.upper(), True, (245, 245, 245))
         self.screen.blit(label, label.get_rect(center=(self.width // 2, 84)))
         self.screen.blit(name_label, name_label.get_rect(center=(self.width // 2, 152)))
+
+    def draw_defeat_video(self):
+        now_ms = pygame.time.get_ticks()
+
+        if self.defeat_video_cap is None:
+            # Fallback: il file manca o OpenCV non e disponibile.
+            self.screen.fill((0, 0, 0))
+            info = self.font_small.render("Video non disponibile", True, (255, 120, 120))
+            self.screen.blit(info, info.get_rect(center=(self.width // 2, self.height // 2)))
+            if now_ms - self.defeat_video_started_at >= 1500:
+                self.enter_menu(play_click=False)
+            return
+
+        if now_ms - self.defeat_video_last_frame_at < self.defeat_video_frame_delay_ms:
+            return
+
+        ok, frame = self.defeat_video_cap.read()
+        self.defeat_video_last_frame_at = now_ms
+
+        if not ok:
+            self.enter_menu(play_click=False)
+            return
+
+        frame_rgb = frame[:, :, ::-1]
+        frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
+        frame_surface = pygame.transform.smoothscale(frame_surface, (self.width, self.height))
+        self.screen.blit(frame_surface, (0, 0))
+
+    def draw_victory_video(self):
+        now_ms = pygame.time.get_ticks()
+
+        if self.victory_video_cap is None:
+            self.screen.fill((0, 0, 0))
+            info = self.font_small.render("Video vittoria non disponibile", True, (120, 255, 120))
+            self.screen.blit(info, info.get_rect(center=(self.width // 2, self.height // 2)))
+            if now_ms - self.victory_video_started_at >= 1500:
+                self.enter_menu(play_click=False)
+            return
+
+        if now_ms - self.victory_video_last_frame_at < self.victory_video_frame_delay_ms:
+            return
+
+        ok, frame = self.victory_video_cap.read()
+        self.victory_video_last_frame_at = now_ms
+
+        if not ok:
+            self.enter_menu(play_click=False)
+            return
+
+        frame_rgb = frame[:, :, ::-1]
+        frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
+        frame_surface = pygame.transform.smoothscale(frame_surface, (self.width, self.height))
+        self.screen.blit(frame_surface, (0, 0))
 
     def _draw_door_threats(self, door_threats, cam_x, side="right"):
         # Anchor near the office side door in world space, then convert to screen space.

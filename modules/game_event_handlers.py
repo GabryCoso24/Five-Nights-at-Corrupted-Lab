@@ -3,6 +3,14 @@ import pygame
 
 class GameEventHandlersMixin:
     def handle_event(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_F11:
+                self.toggle_fullscreen()
+                return
+            if event.key == pygame.K_RETURN and (event.mod & pygame.KMOD_ALT):
+                self.toggle_fullscreen()
+                return
+
         if self.state == "menu":
             self.handle_menu_events(event)
         elif self.state == "night_intro":
@@ -12,8 +20,19 @@ class GameEventHandlersMixin:
             if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_SPACE):
                 self.enter_menu(play_click=True)
         elif self.state == "jumpscare":
-            if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_ESCAPE):
-                self.enter_menu(play_click=False)
+            # Durante il jumpscare non permettere skip: a fine animazione parte il video.
+            pass
+        elif self.state == "defeat_video":
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
+                now_ms = pygame.time.get_ticks()
+                # Evita skip immediato causato da tasti tenuti premuti (es. SPACE usato in game).
+                if now_ms - self.defeat_video_started_at >= 700:
+                    self.enter_menu(play_click=False)
+        elif self.state == "victory_video":
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
+                now_ms = pygame.time.get_ticks()
+                if now_ms - self.victory_video_started_at >= 700:
+                    self.enter_menu(play_click=False)
         elif self.state == "game":
             self.handle_game_events(event)
 

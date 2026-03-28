@@ -1,4 +1,5 @@
 import pygame
+import os
 
 from modules.animatronics import build_default_manager
 from modules.camera import Camera
@@ -17,7 +18,9 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.width = width
         self.height = height
 
-        self.screen = pygame.display.set_mode((self.width, self.height))
+        self.is_fullscreen = False
+        self.screen = None
+        self._apply_display_mode()
         pygame.display.set_caption("Five Nights at The Corrupted Lab")
         self.clock = pygame.time.Clock()
 
@@ -94,3 +97,48 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.flashlight_repelled_targets = set()
         self.flashlight_repel_feedback_until = 0
         self.flashlight_repel_sound = "assets/audio/switch_cam_sound.wav"
+        self.flashlight_hit_sound = "assets/audio/control-shock.wav"
+        self.defeat_video_candidates = [
+            os.path.join("assets", "video", "querelato.mp4"),
+            "querelato.mp4",
+        ]
+        self.defeat_video_audio_candidates = [
+            os.path.join("assets", "audio", "querelato.wav"),
+            os.path.join("assets", "audio", "querelato.mp3"),
+            os.path.join("assets", "audio", "querelato.ogg"),
+            "querelato.wav",
+            "querelato.mp3",
+            "querelato.ogg",
+        ]
+        self.defeat_video_path = None
+        self.defeat_video_cap = None
+        self.defeat_video_audio_started = False
+        self.defeat_video_started_at = 0
+        self.defeat_video_last_frame_at = 0
+        self.defeat_video_frame_delay_ms = 33
+        self.victory_video_candidates = [
+            os.path.join("assets", "video", "shimiya.mp4"),
+            "shimiya.mp4",
+        ]
+        self.victory_video_audio_candidates = [
+            os.path.join("assets", "audio", "shimiya.wav"),
+            os.path.join("assets", "audio", "shimiya.mp3"),
+            os.path.join("assets", "audio", "shimiya.ogg"),
+            "shimiya.wav",
+            "shimiya.mp3",
+            "shimiya.ogg",
+        ]
+        self.victory_video_path = None
+        self.victory_video_cap = None
+        self.victory_video_audio_started = False
+        self.victory_video_started_at = 0
+        self.victory_video_last_frame_at = 0
+        self.victory_video_frame_delay_ms = 33
+
+    def _apply_display_mode(self):
+        flags = pygame.FULLSCREEN if self.is_fullscreen else 0
+        self.screen = pygame.display.set_mode((self.width, self.height), flags)
+
+    def toggle_fullscreen(self):
+        self.is_fullscreen = not self.is_fullscreen
+        self._apply_display_mode()
