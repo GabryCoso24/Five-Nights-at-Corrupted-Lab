@@ -11,6 +11,39 @@ except Exception:
 
 
 class GameFlowMixin:
+    def _resolve_jumpscare_data(self, name):
+        if not getattr(self, "jumpscare_assets", None):
+            return None
+
+        if name in self.jumpscare_assets:
+            return self.jumpscare_assets[name]
+
+        lowered_name = (name or "").lower().replace(" ", "")
+        for key, data in self.jumpscare_assets.items():
+            key_norm = key.lower().replace(" ", "")
+            if key_norm == lowered_name or lowered_name in key_norm or key_norm in lowered_name:
+                return data
+        return None
+
+    def _stop_jumpscare_media(self):
+        if getattr(self, "jumpscare_video_cap", None) is not None:
+            try:
+                self.jumpscare_video_cap.release()
+            except Exception:
+                pass
+
+        if getattr(self, "jumpscare_audio_started", False):
+            self.audio.stop_music()
+
+        self.jumpscare_video_cap = None
+        self.jumpscare_video_path = None
+        self.jumpscare_audio_path = None
+        self.jumpscare_frames = []
+        self.jumpscare_audio_started = False
+        self.jumpscare_last_frame_at = 0
+        self.jumpscare_last_surface = None
+        self.jumpscare_shake_strength = 0
+
     def run(self):
         running = True
         while running:
@@ -69,6 +102,7 @@ class GameFlowMixin:
         self.start_new_game()
 
     def start_gameplay(self):
+        self._stop_jumpscare_media()
         self.state = "game"
         self.orologio.start(pygame.time.get_ticks())
         self.flashlight_ready = True
@@ -84,11 +118,55 @@ class GameFlowMixin:
         self.video_camere.close()
 
     def enter_jumpscare(self, name):
+        self._stop_jumpscare_media()
         self.jumpscare_name = name
         self.jumpscare_start_time = pygame.time.get_ticks()
+        self.jumpscare_duration_ms = 1900
+        self.jumpscare_flash_duration_ms = 230
+        self.jumpscare_shake_duration_ms = 900
+        self.jumpscare_shake_strength = 34
+
+        jumpscare_data = self._resolve_jumpscare_data(name)
+        if jumpscare_data is not None:
+            self.jumpscare_video_path = jumpscare_data.get("video")
+            self.jumpscare_audio_path = jumpscare_data.get("audio")
+            self.jumpscare_frames = list(jumpscare_data.get("frames", []))
+
+        if self.jumpscare_video_path and cv2 is not None:
+            try:
+                self.jumpscare_video_cap = cv2.VideoCapture(self.jumpscare_video_path)
+                if not self.jumpscare_video_cap.isOpened():
+                    self.jumpscare_video_cap = None
+                else:
+                    fps = float(self.jumpscare_video_cap.get(cv2.CAP_PROP_FPS) or 0.0)
+                    frame_count = float(self.jumpscare_video_cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0)
+                    if fps > 1.0 and frame_count > 1.0:
+                        est_ms = int((frame_count / fps) * 1000)
+                        self.jumpscare_duration_ms = max(1000, min(8000, est_ms))
+            except Exception:
+                self.jumpscare_video_cap = None
+
+        if self.jumpscare_video_cap is None and self.jumpscare_frames:
+            est_ms = len(self.jumpscare_frames) * 80
+            self.jumpscare_duration_ms = max(1000, min(5000, est_ms))
+
+        audio_source = None
+        if self.jumpscare_audio_path and os.path.isfile(self.jumpscare_audio_path):
+            audio_source = self.jumpscare_audio_path
+        elif self.jumpscare_video_path and os.path.isfile(self.jumpscare_video_path):
+            audio_source = self.jumpscare_video_path
+
+        if audio_source:
+            self.jumpscare_audio_started = self.audio.play_music(
+                music_file=audio_source,
+                loop=False,
+                volume=1.0,
+            )
+
         self.state = "jumpscare"
 
     def _start_defeat_video(self):
+        self._stop_jumpscare_media()
         self._stop_defeat_video()
         self.defeat_video_started_at = pygame.time.get_ticks()
         self.defeat_video_last_frame_at = 0
@@ -204,6 +282,7 @@ class GameFlowMixin:
     def enter_menu(self, play_click=False):
         if play_click:
             self.audio.play_sound(self.button_sound, volume=0.8)
+        self._stop_jumpscare_media()
         self._stop_defeat_video()
         self._stop_victory_video()
         self.audio.play_music(music_file=self.menu_music, fade_ms=self.music_fade_ms)

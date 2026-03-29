@@ -5,7 +5,7 @@ from modules.animatronics import build_default_manager
 from modules.camera import Camera
 from modules.cameras_system import VideoCamere
 from modules.flashlight import Flashlight
-from modules.game_assets import load_enemy_sprites
+from modules.game_assets import load_enemy_sprites, load_jumpscare_assets
 from modules.game_event_handlers import GameEventHandlersMixin
 from modules.game_flow import GameFlowMixin
 from modules.game_rendering import GameRenderingMixin
@@ -31,6 +31,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
 
         self.animatronics = build_default_manager()
         self.enemy_sprites = load_enemy_sprites()
+        self.jumpscare_assets = load_jumpscare_assets()
         self.default_enemy_sprite = self.enemy_sprites.get("Chugginton")
         if self.default_enemy_sprite is None and self.enemy_sprites:
             self.default_enemy_sprite = next(iter(self.enemy_sprites.values()))
@@ -38,6 +39,17 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.jumpscare_name = ""
         self.jumpscare_start_time = 0
         self.jumpscare_duration_ms = 1900
+        self.jumpscare_video_path = None
+        self.jumpscare_audio_path = None
+        self.jumpscare_frames = []
+        self.jumpscare_video_cap = None
+        self.jumpscare_audio_started = False
+        self.jumpscare_last_frame_at = 0
+        self.jumpscare_frame_delay_ms = 33
+        self.jumpscare_last_surface = None
+        self.jumpscare_flash_duration_ms = 230
+        self.jumpscare_shake_duration_ms = 900
+        self.jumpscare_shake_strength = 34
 
         self.orologio = Orario()
 

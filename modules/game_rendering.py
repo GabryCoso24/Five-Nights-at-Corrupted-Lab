@@ -220,26 +220,63 @@ class GameRenderingMixin:
             return
 
     def draw_jumpscare(self):
-        elapsed = pygame.time.get_ticks() - self.jumpscare_start_time
+        now_ms = pygame.time.get_ticks()
+        elapsed = now_ms - self.jumpscare_start_time
         if elapsed >= self.jumpscare_duration_ms:
+            self._stop_jumpscare_media()
             self._start_defeat_video()
             return
 
         self.screen.fill((0, 0, 0))
-        sprite = self.enemy_sprites.get(self.jumpscare_name, self.default_enemy_sprite)
-        if sprite is not None:
-            target_h = int(self.height * 0.78)
-            target_w = int(sprite.get_width() * (target_h / max(1, sprite.get_height())))
-            target_w = min(target_w, int(self.width * 0.8))
-            img = pygame.transform.smoothscale(sprite, (target_w, target_h)).convert_alpha()
-            pulse = 205 + int(50 * abs((elapsed % 300) / 300 - 0.5))
-            img.set_alpha(max(120, min(255, pulse)))
-            self.screen.blit(img, img.get_rect(center=(self.width // 2, self.height // 2 + 20)))
 
-        label = self.font_night.render("SEI STATO PRESO", True, (255, 80, 80))
-        name_label = self.font_hour.render(self.jumpscare_name.upper(), True, (245, 245, 245))
-        self.screen.blit(label, label.get_rect(center=(self.width // 2, 84)))
-        self.screen.blit(name_label, name_label.get_rect(center=(self.width // 2, 152)))
+        frame_surface = None
+
+        if self.jumpscare_video_cap is not None:
+            if now_ms - self.jumpscare_last_frame_at >= self.jumpscare_frame_delay_ms:
+                ok, frame = self.jumpscare_video_cap.read()
+                self.jumpscare_last_frame_at = now_ms
+                if ok:
+                    frame_rgb = frame[:, :, ::-1]
+                    frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
+                    self.jumpscare_last_surface = frame_surface
+                else:
+                    try:
+                        self.jumpscare_video_cap.release()
+                    except Exception:
+                        pass
+                    self.jumpscare_video_cap = None
+
+            if frame_surface is None:
+                frame_surface = self.jumpscare_last_surface
+
+        if frame_surface is None and self.jumpscare_frames:
+            total_frames = len(self.jumpscare_frames)
+            frame_index = min(total_frames - 1, int((elapsed / max(1, self.jumpscare_duration_ms)) * total_frames))
+            frame_surface = self.jumpscare_frames[frame_index]
+
+        if frame_surface is None:
+            frame_surface = self.enemy_sprites.get(self.jumpscare_name, self.default_enemy_sprite)
+
+        if frame_surface is not None:
+            scaled = pygame.transform.smoothscale(frame_surface, (self.width, self.height))
+
+            shake_x = 0
+            shake_y = 0
+            if elapsed < self.jumpscare_shake_duration_ms:
+                progress = elapsed / max(1, self.jumpscare_shake_duration_ms)
+                intensity = int(self.jumpscare_shake_strength * (1.0 - progress))
+                if intensity > 0:
+                    shake_x = random.randint(-intensity, intensity)
+                    shake_y = random.randint(-intensity, intensity)
+
+            self.screen.blit(scaled, (shake_x, shake_y))
+
+            if elapsed < self.jumpscare_flash_duration_ms:
+                flash_progress = elapsed / max(1, self.jumpscare_flash_duration_ms)
+                alpha = int(255 * (1.0 - flash_progress))
+                flash = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+                flash.fill((255, 255, 255, max(0, min(255, alpha))))
+                self.screen.blit(flash, (0, 0))
 
     def draw_defeat_video(self):
         now_ms = pygame.time.get_ticks()
