@@ -12,6 +12,7 @@ from modules.game_flow import GameFlowMixin
 from modules.game_rendering import GameRenderingMixin
 from modules.orario import Orario
 from modules.startBackgroudMusic import AudioManager
+from modules.system_panel import SystemPanel
 
 
 class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
@@ -57,6 +58,8 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.jumpscare_flash_duration_ms = 230
         self.jumpscare_shake_duration_ms = 900
         self.jumpscare_shake_strength = 34
+        self.jumpscare_continue_game = False
+        self.jumpscare_pending_error = None
 
         self.orologio = Orario()
 
@@ -89,6 +92,43 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         )
         self.video_camere.set_threat_sprite(self.default_enemy_sprite)
 
+        self.system_panel = SystemPanel(
+            width=self.width,
+            height=self.height,
+            label_font=self.font_small,
+            title_font=self.font_hour,
+        )
+        self.system_panel.set_trigger_rect(
+            x=18,
+            y=self.height - 94,
+            w=210,
+            h=82,
+        )
+        self.system_errors = {
+            "camera": False,
+            "ventilation": False,
+            "flashlight": False,
+        }
+        self.system_reboot_duration_ms = 5000
+        self.system_reboots = {
+            "camera": 0,
+            "ventilation": 0,
+            "flashlight": 0,
+        }
+        self.random_system_errors_enabled = True
+        self.random_error_min_interval_ms = 26000
+        self.random_error_max_interval_ms = 46000
+        self.random_error_trigger_chance = 0.58
+        self.random_error_multi_weights = {
+            1: 0.84,
+            2: 0.13,
+            3: 0.03,
+        }
+        self.next_random_system_error_at = 0
+        self.blocked_vent_cameras = set()
+
+        self.error_animatronic_visibility_delay_ms = 45000
+
         button_width, button_height = 280, 80
         center_x = (self.width - button_width) // 2
         self.new_game_button = pygame.Rect(center_x, self.height // 2 - 80, button_width, button_height)
@@ -96,10 +136,12 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.exit_button = pygame.Rect(center_x, self.height // 2 + 110, button_width, button_height)
 
         self.menu_music = "assets/audio/menu.wav"
+        self.gameplay_ambience_music = "assets/audio/ambience.wav"
         self.button_sound = "assets/audio/pulsanti.wav"
         self.intro_duration_ms = 2600
         self.outro_duration_ms = 2600
         self.music_fade_ms = 800
+        self.gameplay_ambience_volume = 0.28
 
         self.audio.play_music(music_file=self.menu_music)
 
@@ -117,6 +159,23 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.flashlight_repel_feedback_until = 0
         self.flashlight_repel_sound = "assets/audio/switch_cam_sound.wav"
         self.flashlight_hit_sound = "assets/audio/control-shock.wav"
+        self.system_error_sound = "assets/audio/error.wav"
+        self.vent_enter_sound = "assets/audio/vents.wav"
+        self.system_reboot_sound = "assets/audio/reboot.wav"
+        self.office_entry_sounds = {
+            "McQeen": "assets/audio/mqueen_in_office.wav",
+            "Chugginton" : "assets/audio/chugginton_in_office.wav"
+        }
+        self.office_entry_sound_volume = 0.62
+        self._office_entry_sound_cooldown_ms = 1000
+        self._last_office_entry_sound_at = {}
+        self._last_vent_enter_sound_at = 0
+        self._vent_enter_sound_cooldown_ms = 500
+        self._last_system_error_sound_at = 0
+        self._system_error_sound_cooldown_ms = 450
+        self._last_reboot_sound_at = 0
+        self._reboot_sound_cooldown_ms = 300
+        self._vent_move_sound_until = 0
         self.defeat_video_candidates = [
             os.path.join("assets", "video", "querelato.mp4"),
             "querelato.mp4",
@@ -153,6 +212,8 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.victory_video_started_at = 0
         self.victory_video_last_frame_at = 0
         self.victory_video_frame_delay_ms = 33
+        self._admin_pause_active = False
+        self._admin_pause_started_at = 0
 
         self._load_progress()
 

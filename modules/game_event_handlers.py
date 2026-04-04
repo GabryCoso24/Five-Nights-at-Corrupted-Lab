@@ -56,7 +56,14 @@ class GameEventHandlersMixin:
                 pygame.event.post(pygame.event.Event(pygame.QUIT))
 
     def handle_game_events(self, event):
+        handled, action = self.system_panel.handle_event(event, lock_open=self._is_any_rebooting())
+        if handled:
+            if action:
+                self.handle_system_panel_action(action)
+            return
+
         if self.video_camere.handle_event(event):
+            self.blocked_vent_cameras = self.video_camere.get_blocked_vent_edges()
             if self.video_camere.is_open and self.flashlight_active:
                 self.flashlight_active = False
                 self.flashlight_repel_triggered = False
@@ -66,7 +73,7 @@ class GameEventHandlersMixin:
         if event.type != pygame.KEYDOWN:
             return
 
-        if event.key == pygame.K_SPACE and self.flashlight_ready and not self.video_camere.is_open:
+        if event.key == pygame.K_SPACE and self.flashlight_ready and not self.video_camere.is_open and not self.system_panel.is_open and not self.system_errors.get("flashlight", False):
             self.flashlight_active = True
             self.flashlight_activation_time = pygame.time.get_ticks()
             self.flashlight_ready = False

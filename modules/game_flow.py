@@ -2,6 +2,7 @@ import sys
 import traceback
 import json
 import os
+import random
 
 import pygame
 
@@ -12,6 +13,194 @@ except Exception:
 
 
 class GameFlowMixin:
+    def _stop_system_loop_sounds(self):
+        self.audio.stop_loop_sound(getattr(self, "system_reboot_sound", "assets/audio/reboot.wav"))
+        self.audio.stop_loop_sound(getattr(self, "system_error_sound", "assets/audio/error.wav"))
+
+    def _update_error_loop_sound(self):
+        sound_file = getattr(self, "system_error_sound", "assets/audio/error.wav")
+        if any(bool(v) for v in self.system_errors.values()):
+            self.audio.start_loop_sound(sound_file, volume=0.6)
+        else:
+            self.audio.stop_loop_sound(sound_file)
+
+    def _start_gameplay_ambience(self):
+        self.audio.play_music(
+            music_file=getattr(self, "gameplay_ambience_music", "assets/audio/ambience.wav"),
+            loop=True,
+            volume=getattr(self, "gameplay_ambience_volume", 0.28),
+            fade_ms=300,
+        )
+
+    def _stop_gameplay_ambience(self, fade_ms=None):
+        self.audio.stop_music(fade_ms=getattr(self, "music_fade_ms", 800) if fade_ms is None else fade_ms)
+
+    def _schedule_next_random_error(self, now_ms=None):
+        now_ms = pygame.time.get_ticks() if now_ms is None else now_ms
+        min_ms = int(getattr(self, "random_error_min_interval_ms", 18000))
+        max_ms = int(getattr(self, "random_error_max_interval_ms", 32000))
+        if max_ms < min_ms:
+            min_ms, max_ms = max_ms, min_ms
+        self.next_random_system_error_at = now_ms + random.randint(max(1000, min_ms), max(1000, max_ms))
+
+    def maybe_trigger_random_system_error(self, now_ms=None, allow_when_admin_paused=False):
+        if not bool(getattr(self, "random_system_errors_enabled", True)):
+            return False
+
+        now_ms = pygame.time.get_ticks() if now_ms is None else now_ms
+        if not allow_when_admin_paused and bool(getattr(self, "_admin_pause_active", False)):
+            return False
+
+        next_at = int(getattr(self, "next_random_system_error_at", 0) or 0)
+        if next_at <= 0:
+            self._schedule_next_random_error(now_ms)
+            return False
+        if now_ms < next_at:
+            return False
+
+        if random.random() > float(getattr(self, "random_error_trigger_chance", 0.58)):
+            self._schedule_next_random_error(now_ms)
+            return False
+
+        available_errors = [name for name, active in self.system_errors.items() if not active]
+        if not available_errors:
+            self._schedule_next_random_error(now_ms)
+            return False
+
+        weights_by_count = dict(getattr(self, "random_error_multi_weights", {1: 0.84, 2: 0.13, 3: 0.03}) or {})
+        max_count = min(len(available_errors), 3)
+        roll = random.random()
+        acc = 0.0
+        count = 1
+        for candidate in range(1, max_count + 1):
+            acc += float(weights_by_count.get(candidate, 0.0))
+            if roll <= acc:
+                count = candidate
+                break
+
+        picked_errors = random.sample(available_errors, k=count)
+        for error_type in picked_errors:
+            self.trigger_system_error(error_type)
+        self._schedule_next_random_error(now_ms)
+        return True
+
+    def _is_rebooting(self, error_type, now_ms=None):
+        now_ms = pygame.time.get_ticks() if now_ms is None else now_ms
+        return now_ms < int(self.system_reboots.get(error_type, 0) or 0)
+
+    def _is_any_rebooting(self, now_ms=None):
+        now_ms = pygame.time.get_ticks() if now_ms is None else now_ms
+        return any(now_ms < int(v or 0) for v in self.system_reboots.values())
+
+    def _start_reboot(self, error_type, now_ms=None):
+        if error_type not in self.system_errors:
+            return
+        now_ms = pygame.time.get_ticks() if now_ms is None else now_ms
+        self.system_reboots[error_type] = now_ms + int(getattr(self, "system_reboot_duration_ms", 5000))
+
+    def _restart_active_reboots(self, now_ms=None):
+        now_ms = pygame.time.get_ticks() if now_ms is None else now_ms
+        duration = int(getattr(self, "system_reboot_duration_ms", 5000))
+        for error_type, until in list(self.system_reboots.items()):
+            if now_ms < int(until or 0):
+                self.system_reboots[error_type] = now_ms + duration
+
+    def _update_reboots(self, now_ms=None):
+        now_ms = pygame.time.get_ticks() if now_ms is None else now_ms
+        for error_type, until in list(self.system_reboots.items()):
+            until = int(until or 0)
+            if until <= 0 or now_ms < until:
+                continue
+            self.system_reboots[error_type] = 0
+            self.system_errors[error_type] = False
+            if error_type == "camera":
+                self.video_camere.set_camera_error(False)
+            elif error_type == "ventilation":
+                self.video_camere.set_vent_blocking_enabled(True)
+
+        self._update_error_loop_sound()
+
+        if self._is_any_rebooting(now_ms):
+            self.audio.start_loop_sound(getattr(self, "system_reboot_sound", "assets/audio/reboot.wav"), volume=0.9)
+        else:
+            self.audio.stop_loop_sound(getattr(self, "system_reboot_sound", "assets/audio/reboot.wav"))
+
+    def reset_system_errors(self):
+        self.system_errors = {
+            "camera": False,
+            "ventilation": False,
+            "flashlight": False,
+        }
+        self.system_reboots = {
+            "camera": 0,
+            "ventilation": 0,
+            "flashlight": 0,
+        }
+        self.blocked_vent_cameras.clear()
+        self.video_camere.set_camera_error(False)
+        self.video_camere.set_vent_blocking_enabled(True)
+        self.video_camere.set_blocked_vents(self.blocked_vent_cameras)
+        self._stop_system_loop_sounds()
+        self.audio.stop_loop_sound(getattr(self, "vent_enter_sound", "assets/audio/vents.wav"))
+        self._schedule_next_random_error()
+
+    def trigger_system_error(self, error_type):
+        if error_type not in self.system_errors:
+            return
+        self.system_errors[error_type] = True
+        self._update_error_loop_sound()
+        if error_type == "camera":
+            self.video_camere.set_camera_error(True)
+        elif error_type == "ventilation":
+            self.video_camere.set_vent_blocking_enabled(False)
+            # Ventilation failure forces all vents open immediately.
+            self.blocked_vent_cameras.clear()
+            self.video_camere.set_blocked_vent_edges(set())
+        elif error_type == "flashlight":
+            self.flashlight_active = False
+
+    def handle_system_panel_action(self, action):
+        now_ms = pygame.time.get_ticks()
+        self._update_reboots(now_ms)
+
+        if action in ("reboot_camera", "reboot_ventilation", "reboot_flashlight", "reboot_all") and self._is_any_rebooting(now_ms):
+            # A reboot is already running: ignore further reboot requests until completion.
+            return
+
+        if action in ("reboot_camera", "reboot_ventilation", "reboot_flashlight", "reboot_all"):
+            if now_ms - getattr(self, "_last_reboot_sound_at", 0) >= getattr(self, "_reboot_sound_cooldown_ms", 300):
+                self.audio.play_sound(getattr(self, "system_reboot_sound", "assets/audio/reboot.wav"), volume=0.9)
+                self._last_reboot_sound_at = now_ms
+            self.audio.start_loop_sound(getattr(self, "system_reboot_sound", "assets/audio/reboot.wav"), volume=0.9)
+
+        if action == "reboot_camera":
+            self._start_reboot("camera", now_ms)
+        elif action == "reboot_ventilation":
+            self._start_reboot("ventilation", now_ms)
+        elif action == "reboot_flashlight":
+            self._start_reboot("flashlight", now_ms)
+        elif action == "reboot_all":
+            self._start_reboot("camera", now_ms)
+            self._start_reboot("ventilation", now_ms)
+            self._start_reboot("flashlight", now_ms)
+        elif action == "reboot_lock_close_attempt":
+            self._restart_active_reboots(now_ms)
+            self.system_panel.is_open = True
+        elif action == "exit":
+            self.system_panel.is_open = False
+
+    def _shift_gameplay_timers(self, delta_ms):
+        if delta_ms <= 0:
+            return
+        self.flashlight_activation_time += delta_ms
+        self.flashlight_cooldown_until += delta_ms
+        self.flashlight_repel_feedback_until += delta_ms
+        self._vent_move_sound_until += delta_ms
+        self._last_vent_enter_sound_at += delta_ms
+        self._last_system_error_sound_at += delta_ms
+        self._last_reboot_sound_at += delta_ms
+        self.animatronics.shift_timers(delta_ms)
+
     def _clamp_night(self, night_value):
         try:
             night_int = int(night_value)
@@ -160,23 +349,40 @@ class GameFlowMixin:
         self._stop_jumpscare_media()
         self.state = "game"
         self.orologio.start(pygame.time.get_ticks())
+        self.reset_system_errors()
+        self.system_panel.is_open = False
         self.flashlight_ready = True
         self.flashlight_active = False
         self.flashlight_repel_triggered = False
         self.flashlight_repelled_targets.clear()
         self.flashlight_cooldown_until = 0
+        self._vent_move_sound_until = 0
+        self.audio.stop_loop_sound(getattr(self, "vent_enter_sound", "assets/audio/vents.wav"))
+        self.jumpscare_continue_game = False
+        self.jumpscare_pending_error = None
+        self.animatronics.set_navigation_graph(self.video_camere.build_navigation_graph())
+        self.animatronics.set_routes_by_side(self.video_camere.build_routes_by_side())
         self.animatronics.reset()
+        
+        now_ms = pygame.time.get_ticks()
+        delay_ms = int(getattr(self, "error_animatronic_visibility_delay_ms", 45000))
+        self.animatronics.set_error_animatronic_visibility_delay(now_ms, delay_ms, self.current_night)
+        
         self.video_camere.set_threat_cameras([])
         self.jumpscare_name = ""
         self.save_progress(next_night=self.current_night)
         self._stop_defeat_video()
         self._stop_victory_video()
+        self._start_gameplay_ambience()
         self.video_camere.close()
 
-    def enter_jumpscare(self, name):
+    def enter_jumpscare(self, name, continue_game=False, pending_error=None):
         self._stop_jumpscare_media()
+        self._stop_system_loop_sounds()
         self.jumpscare_name = name
         self.jumpscare_start_time = pygame.time.get_ticks()
+        self.jumpscare_continue_game = bool(continue_game)
+        self.jumpscare_pending_error = pending_error
         self.jumpscare_duration_ms = 1900
         self.jumpscare_flash_duration_ms = 230
         self.jumpscare_shake_duration_ms = 900
@@ -221,8 +427,12 @@ class GameFlowMixin:
 
         self.state = "jumpscare"
 
+    def enter_error_jumpscare(self, name, error_type):
+        self.enter_jumpscare(name=name, continue_game=True, pending_error=error_type)
+
     def _start_defeat_video(self):
         self._stop_jumpscare_media()
+        self._stop_system_loop_sounds()
         self._stop_defeat_video()
         self.defeat_video_started_at = pygame.time.get_ticks()
         self.defeat_video_last_frame_at = 0
@@ -279,6 +489,7 @@ class GameFlowMixin:
 
     def _start_victory_video(self):
         self._stop_victory_video()
+        self._stop_system_loop_sounds()
         self.victory_video_started_at = pygame.time.get_ticks()
         self.victory_video_last_frame_at = 0
         self.victory_video_path = None
@@ -333,7 +544,8 @@ class GameFlowMixin:
     def exit_night(self):
         self.audio.play_sound(self.button_sound, volume=0.8)
         self.audio.stop_music(fade_ms=self.music_fade_ms)
-        if self.current_night >= getattr(self, "max_night", 5):
+        self._stop_system_loop_sounds()
+        if getattr(self, "last_completed_night", 0) >= getattr(self, "max_night", 5):
             self.save_progress(next_night=1, completed=True)
             self.can_continue = False
         else:
@@ -343,10 +555,15 @@ class GameFlowMixin:
     def enter_menu(self, play_click=False):
         if play_click:
             self.audio.play_sound(self.button_sound, volume=0.8)
+        self._stop_gameplay_ambience(fade_ms=300)
+        self.audio.stop_loop_sound(getattr(self, "system_reboot_sound", "assets/audio/reboot.wav"))
+        self.audio.stop_loop_sound(getattr(self, "system_error_sound", "assets/audio/error.wav"))
+        self.audio.stop_loop_sound(getattr(self, "vent_enter_sound", "assets/audio/vents.wav"))
         self._stop_jumpscare_media()
         self._stop_defeat_video()
         self._stop_victory_video()
         self.audio.play_music(music_file=self.menu_music, fade_ms=self.music_fade_ms)
         self.video_camere.set_threat_cameras([])
         self.video_camere.close()
+        self.system_panel.is_open = False
         self.state = "menu"

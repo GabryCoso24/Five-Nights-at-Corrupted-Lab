@@ -6,6 +6,31 @@ from modules.ui_manager import add_graphic_element, draw_graphic_elements
 
 
 class GameRenderingMixin:
+    def _draw_end_video_label(self, text, color):
+        panel_h = 94
+        panel = pygame.Surface((self.width, panel_h), pygame.SRCALPHA)
+        panel.fill((0, 0, 0, 120))
+        self.screen.blit(panel, (0, 0))
+
+        label_shadow = self.font_night.render(text, True, (10, 10, 10))
+        label = self.font_night.render(text, True, color)
+        center = (self.width // 2, 46)
+        self.screen.blit(label_shadow, label_shadow.get_rect(center=(center[0] + 2, center[1] + 2)))
+        self.screen.blit(label, label.get_rect(center=center))
+
+    def _draw_error_alert_overlay(self, now_ms):
+        active_errors = [name for name, is_active in self.system_errors.items() if is_active]
+        if not active_errors:
+            return
+
+        error_count = len(active_errors)
+        pulse = 0.5 + (0.5 * abs(((now_ms // 90) % 10) - 5) / 5.0)
+        alpha = int(min(115, 14 + (error_count * 14) + (pulse * 38)))
+
+        red_flash = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        red_flash.fill((220, 24, 24, max(0, min(255, alpha))))
+        self.screen.blit(red_flash, (0, 0))
+
     def draw_menu(self):
         self.screen.blit(self.menu_background, (0, 0))
 
@@ -105,70 +130,143 @@ class GameRenderingMixin:
     def draw_game(self):
         mouse_pos = pygame.mouse.get_pos()
         mouse_x, _ = mouse_pos
-        if not self.video_camere.is_open:
+        admin_mode = self.video_camere.is_admin_mode()
+        now_ms = pygame.time.get_ticks()
+        self._update_reboots(now_ms)
+        self.maybe_trigger_random_system_error(now_ms=now_ms, allow_when_admin_paused=False)
+
+        if now_ms >= getattr(self, "_vent_move_sound_until", 0):
+            self.audio.stop_loop_sound(getattr(self, "vent_enter_sound", "assets/audio/vents.wav"))
+
+        if admin_mode and not self._admin_pause_active:
+            self.orologio.pause(now_ms)
+            self._admin_pause_started_at = now_ms
+            self._admin_pause_active = True
+        elif not admin_mode and self._admin_pause_active:
+            delta_ms = max(0, now_ms - getattr(self, "_admin_pause_started_at", now_ms))
+            self._shift_gameplay_timers(delta_ms)
+            self.orologio.resume(now_ms)
+            self._admin_pause_active = False
+
+        if not self.video_camere.is_open and not self.system_panel.is_open and not admin_mode:
             self.camera.update_from_cursor(mouse_x)
         cam_x = self.camera.get_offset_x()
         is_right_full = cam_x >= int(self.camera.max_offset * 0.9)
+        is_left_full = cam_x <= int(self.camera.max_offset * 0.1)
         self.video_camere.set_trigger_visible(self.video_camere.is_open or is_right_full)
         self.video_camere.set_trigger_interactable(self.video_camere.is_open or is_right_full)
+        self.system_panel.set_trigger_visible(self.system_panel.is_open or is_left_full)
+        self.system_panel.set_trigger_interactable(self.system_panel.is_open or is_left_full)
 
         self.screen.blit(self.game_background, (-cam_x, 0))
 
+        self._draw_error_alert_overlay(now_ms)
+
+        self.video_camere.set_camera_error(self.system_errors.get("camera", False))
+        self.video_camere.set_vent_blocking_enabled(not self.system_errors.get("ventilation", False))
+        # Keep VideoCamere as the source of truth for live vent toggle interactions.
+        self.blocked_vent_cameras = self.video_camere.get_blocked_vent_edges()
+
         now_ms = pygame.time.get_ticks()
-        if self.flashlight_active and now_ms - self.flashlight_activation_time >= self.flashlight_duration_ms:
+        if self.system_errors.get("flashlight", False):
+            self.flashlight_active = False
+        if self.system_panel.is_open and self.flashlight_active:
             self.flashlight_active = False
             self.flashlight_repel_triggered = False
             self.flashlight_repelled_targets.clear()
 
-        if self.flashlight_active:
-            self.flashlight.draw(self.screen)
-            # Repel any newly lit enemy while the beam stays active.
-            lit_targets = self._get_flashlight_lit_targets(positions=self.animatronics.get_positions(), cam_x=cam_x)
-            new_targets = [name for name in lit_targets if name not in self.flashlight_repelled_targets]
-            repelled = self.animatronics.on_flashlight(now_ms, target_names=new_targets)
-            if repelled:
-                self.flashlight_repelled_targets.update(repelled)
-                self.flashlight_repel_triggered = True
-                self.flashlight_repel_feedback_until = now_ms + 360
-                self.audio.play_sound(self.flashlight_repel_sound, volume=0.7)
-                self.audio.play_sound(self.flashlight_hit_sound, volume=0.8)
+        if not admin_mode:
+            if self.flashlight_active and now_ms - self.flashlight_activation_time >= self.flashlight_duration_ms:
+                self.flashlight_active = False
+                self.flashlight_repel_triggered = False
+                self.flashlight_repelled_targets.clear()
 
-        label = self.orologio.update(now_ms)
+            if self.flashlight_active:
+                self.flashlight.draw(self.screen)
+                # Repel any newly lit enemy while the beam stays active.
+                lit_targets = self._get_flashlight_lit_targets(positions=self.animatronics.get_positions(), cam_x=cam_x)
+                new_targets = [name for name in lit_targets if name not in self.flashlight_repelled_targets]
+                repelled = self.animatronics.on_flashlight(now_ms, target_names=new_targets)
+                if repelled:
+                    self.flashlight_repelled_targets.update(repelled)
+                    self.flashlight_repel_triggered = True
+                    self.flashlight_repel_feedback_until = now_ms + 360
+                    self.audio.play_sound(self.flashlight_repel_sound, volume=0.45)
+                    self.audio.play_sound(self.flashlight_hit_sound, volume=0.55)
+
+        label = self.orologio.get_label() if admin_mode else self.orologio.update(now_ms)
         hour_index = getattr(self.orologio, "hour_index", 0)
 
         watched_camera = self.video_camere.get_selected_camera_id() if self.video_camere.is_open else None
         player_can_defend = self.flashlight_ready or self.flashlight_active
-        events = self.animatronics.update(
-            now_ms=now_ms,
-            night_level=self.current_night,
-            hour_index=hour_index,
-            watched_camera=watched_camera,
-            player_can_defend=player_can_defend,
-        )
+        if not admin_mode:
+            events = self.animatronics.update(
+                now_ms=now_ms,
+                night_level=self.current_night,
+                hour_index=hour_index,
+                watched_camera=watched_camera,
+                blocked_vent_cameras=self.blocked_vent_cameras,
+                player_can_defend=player_can_defend,
+                active_system_errors={name for name, active in self.system_errors.items() if active},
+            )
 
-        for event in events:
-            if event.get("type") == "moved":
-                self.video_camere.register_movement(
-                    from_camera=event.get("from"),
-                    to_camera=event.get("to"),
-                    jam_duration_ms=2200,
-                )
-            if event.get("type") == "jumpscare":
-                self.enter_jumpscare(event.get("name", "Sconosciuto"))
-                return
+            for event in events:
+                if event.get("type") == "moved":
+                    mover_name = str(event.get("name", ""))
+                    self.video_camere.register_movement(
+                        from_camera=event.get("from"),
+                        to_camera=event.get("to"),
+                        jam_duration_ms=2200,
+                    )
+                    to_camera = str(event.get("to", ""))
+                    if to_camera in ("door_left", "door_right"):
+                        anim_data = self.animatronics.animatronics.get(mover_name)
+                        if anim_data is not None and not anim_data.can_trigger_error:
+                            sound_path = getattr(self, "office_entry_sounds", {}).get(mover_name)
+                            if sound_path:
+                                last_by_name = getattr(self, "_last_office_entry_sound_at", {})
+                                last_at = int(last_by_name.get(mover_name, 0) or 0)
+                                if now_ms - last_at >= getattr(self, "_office_entry_sound_cooldown_ms", 1000):
+                                    self.audio.play_sound(
+                                        sound_path,
+                                        volume=getattr(self, "office_entry_sound_volume", 0.62),
+                                    )
+                                    last_by_name[mover_name] = now_ms
+                                    self._last_office_entry_sound_at = last_by_name
+                    if to_camera.startswith("cam"):
+                        try:
+                            to_idx = int(to_camera.replace("cam", ""))
+                        except ValueError:
+                            to_idx = -1
+                        if 11 <= to_idx <= 15:
+                            if now_ms - getattr(self, "_last_vent_enter_sound_at", 0) >= getattr(self, "_vent_enter_sound_cooldown_ms", 500):
+                                self.audio.start_loop_sound(getattr(self, "vent_enter_sound", "assets/audio/vents.wav"), volume=0.8)
+                                self._vent_move_sound_until = now_ms + 550
+                                self._last_vent_enter_sound_at = now_ms
+                if event.get("type") == "jumpscare":
+                    self.enter_jumpscare(event.get("name", "Sconosciuto"))
+                    return
+                if event.get("type") == "system_error":
+                    errors = event.get("errors")
+                    if not isinstance(errors, list) or not errors:
+                        one_error = event.get("error", "camera")
+                        errors = [one_error]
+                    self.enter_error_jumpscare(
+                        event.get("name", "Sconosciuto"),
+                        errors,
+                    )
+                    return
 
-        positions = self.animatronics.get_positions()
-        threat_cameras = self.animatronics.get_cameras_with_presence()
+        positions = self.animatronics.get_positions(now_ms=now_ms)
+        threat_cameras = self.animatronics.get_cameras_with_presence(now_ms=now_ms)
         self.video_camere.set_threat_cameras(threat_cameras)
 
         # Mostra tutti i nemici presenti nella camera corrente con sprite distinti.
         threats_by_camera = {}
         for name, camera_id in positions.items():
+            if camera_id in ("door_left", "door_right"):
+                continue
             camera_slots = [camera_id]
-            if camera_id == "door_left":
-                camera_slots.append("cam1")
-            elif camera_id == "door_right":
-                camera_slots.append("cam14")
 
             sprite = self.enemy_sprites.get(name, self.default_enemy_sprite)
             if sprite is None:
@@ -185,7 +283,7 @@ class GameRenderingMixin:
         else:
             self.video_camere.set_threat_sprite(self.default_enemy_sprite)
 
-        if not self.flashlight_ready and now_ms >= self.flashlight_cooldown_until:
+        if (not admin_mode) and (not self.flashlight_ready) and now_ms >= self.flashlight_cooldown_until:
             self.flashlight_ready = True
 
         clock_text = self.font_hour.render(label, True, (235, 235, 235))
@@ -193,7 +291,10 @@ class GameRenderingMixin:
         night_text = self.font_small.render(f"Notte {self.current_night}", True, (235, 235, 235))
         self.screen.blit(night_text, night_text.get_rect(topright=(self.width - 34, 94)))
 
-        if self.flashlight_active:
+        if self.system_errors.get("flashlight", False):
+            indicator_text = "Flashlight: ERROR"
+            indicator_color = (255, 80, 80)
+        elif self.flashlight_active:
             indicator_text = "Flashlight: ATTIVA"
             indicator_color = (80, 255, 80)
         elif self.flashlight_ready:
@@ -215,14 +316,17 @@ class GameRenderingMixin:
             self._draw_door_threats(right_door_threats, cam_x, side="right")
 
         self.video_camere.update_hover(mouse_pos)
+        self.system_panel.update_hover(mouse_pos)
         self.video_camere.draw_overlay(self.screen)
+        self.system_panel.draw_overlay(self.screen, self.system_errors, self.system_reboots, now_ms)
+        self.system_panel.queue_trigger()
         self.video_camere.queue_trigger()
         draw_graphic_elements(self.screen)
 
-        if now_ms < self.flashlight_repel_feedback_until:
+        if (not admin_mode) and now_ms < self.flashlight_repel_feedback_until:
             self._draw_flashlight_repel_feedback(now_ms)
 
-        if self.orologio.is_finished():
+        if (not admin_mode) and self.orologio.is_finished():
             self.last_completed_night = self.current_night
             if self.current_night < getattr(self, "max_night", 5):
                 self.current_night += 1
@@ -237,6 +341,21 @@ class GameRenderingMixin:
         elapsed = now_ms - self.jumpscare_start_time
         if elapsed >= self.jumpscare_duration_ms:
             self._stop_jumpscare_media()
+            if getattr(self, "jumpscare_continue_game", False):
+                self._shift_gameplay_timers(max(0, now_ms - self.jumpscare_start_time))
+                pending_error = getattr(self, "jumpscare_pending_error", None)
+                if pending_error:
+                    self.animatronics.on_error_jumpscare_finished(now_ms, getattr(self, "jumpscare_name", None))
+                    if isinstance(pending_error, (list, tuple, set)):
+                        for err_name in pending_error:
+                            self.trigger_system_error(str(err_name))
+                    else:
+                        self.trigger_system_error(str(pending_error))
+                self._start_gameplay_ambience()
+                self.jumpscare_continue_game = False
+                self.jumpscare_pending_error = None
+                self.state = "game"
+                return
             self._start_defeat_video()
             return
 
@@ -297,6 +416,7 @@ class GameRenderingMixin:
         if self.defeat_video_cap is None:
             # Fallback: il file manca o OpenCV non e disponibile.
             self.screen.fill((0, 0, 0))
+            self._draw_end_video_label("GAME OVER", (255, 90, 90))
             info = self.font_small.render("Video non disponibile", True, (255, 120, 120))
             self.screen.blit(info, info.get_rect(center=(self.width // 2, self.height // 2)))
             if now_ms - self.defeat_video_started_at >= 1500:
@@ -317,12 +437,14 @@ class GameRenderingMixin:
         frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
         frame_surface = pygame.transform.smoothscale(frame_surface, (self.width, self.height))
         self.screen.blit(frame_surface, (0, 0))
+        self._draw_end_video_label("GAME OVER", (255, 90, 90))
 
     def draw_victory_video(self):
         now_ms = pygame.time.get_ticks()
 
         if self.victory_video_cap is None:
             self.screen.fill((0, 0, 0))
+            self._draw_end_video_label("NOTTE SUPERATA", (120, 255, 150))
             info = self.font_small.render("Video vittoria non disponibile", True, (120, 255, 120))
             self.screen.blit(info, info.get_rect(center=(self.width // 2, self.height // 2)))
             if now_ms - self.victory_video_started_at >= 1500:
@@ -343,6 +465,7 @@ class GameRenderingMixin:
         frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
         frame_surface = pygame.transform.smoothscale(frame_surface, (self.width, self.height))
         self.screen.blit(frame_surface, (0, 0))
+        self._draw_end_video_label("NOTTE SUPERATA", (120, 255, 150))
 
     def _draw_door_threats(self, door_threats, cam_x, side="right"):
         # Anchor near the office side door in world space, then convert to screen space.

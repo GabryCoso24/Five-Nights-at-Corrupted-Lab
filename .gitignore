@@ -1,3 +1,6 @@
 .venv
 venv-activator.sh
 savegame.json
+build/
+dist/
+*.spec
