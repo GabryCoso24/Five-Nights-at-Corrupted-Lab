@@ -13,9 +13,15 @@ class VideoCamere:
         self.height = height
         self.label_font = label_font
         self.title_font = title_font
+        self.trigger_visible = True
+        self.trigger_interactable = True
 
         self.trigger_rect = pygame.Rect(24, self.height - 96, 220, 64)
-        self.panel_rect = pygame.Rect(120, 70, self.width - 240, self.height - 140)
+        panel_w = min(1420, max(1080, int(self.width * 0.72)))
+        panel_h = min(820, max(680, int(self.height * 0.78)))
+        panel_x = max(0, self.width - panel_w)
+        panel_y = max(36, (self.height - panel_h) // 2 - 8)
+        self.panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
         self.is_open = False
         self.is_trigger_hovered = False
 
@@ -31,6 +37,7 @@ class VideoCamere:
         self._cam_map_surface = None
         self._cam_map_vent_surface = None
         self._active_map = "main"
+        self._last_selected_camera_by_map = {"main": None, "vents": None}
         self._threat_sprites_by_camera = {}
         self._map_toggle_rect = pygame.Rect(0, 0, 0, 0)
         self._cam_switch_sound = os.path.join("assets", "audio", "switch_cam_sound.wav")
@@ -45,27 +52,41 @@ class VideoCamere:
         self.trigger_rect = pygame.Rect(x, y, w, h)
         return self.trigger_rect
 
+    def set_trigger_visible(self, visible):
+        self.trigger_visible = bool(visible)
+        if not self.trigger_visible:
+            self.is_trigger_hovered = False
+        return self.trigger_visible
+
+    def set_trigger_interactable(self, interactable):
+        self.trigger_interactable = bool(interactable)
+        if not self.trigger_interactable:
+            self.is_trigger_hovered = False
+        return self.trigger_interactable
+
     def set_panel_rect(self, x, y, w, h):
         self.panel_rect = pygame.Rect(x, y, w, h)
         return self.panel_rect
 
     def update_hover(self, mouse_pos):
-        self.is_trigger_hovered = self.trigger_rect.collidepoint(mouse_pos)
+        self.is_trigger_hovered = (
+            self.trigger_visible
+            and self.trigger_interactable
+            and self.trigger_rect.collidepoint(mouse_pos)
+        )
 
     def handle_event(self, event):
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_c:
-            self.is_open = not self.is_open
-            return True
-
         if event.type == pygame.KEYDOWN and event.key == pygame.K_TAB and self.is_open:
+            self._remember_selected_for_active_map()
             self._active_map = "vents" if self._active_map == "main" else "main"
-            self._ensure_selected_feed_visible()
+            if not self._restore_selected_for_active_map():
+                self._ensure_selected_feed_visible()
             return True
 
         if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
             return False
 
-        if self.trigger_rect.collidepoint(event.pos):
+        if self.trigger_visible and self.trigger_interactable and self.trigger_rect.collidepoint(event.pos):
             self.is_open = not self.is_open
             return True
 
@@ -73,8 +94,10 @@ class VideoCamere:
             return False
 
         if self._map_toggle_rect.collidepoint(event.pos):
+            self._remember_selected_for_active_map()
             self._active_map = "vents" if self._active_map == "main" else "main"
-            self._ensure_selected_feed_visible()
+            if not self._restore_selected_for_active_map():
+                self._ensure_selected_feed_visible()
             return True
 
         for idx, button_rect in self._cam_button_rects:
@@ -82,6 +105,7 @@ class VideoCamere:
                 if self._selected_feed_idx != idx:
                     self._selected_feed_idx = idx
                     self._play_switch_sound()
+                self._remember_selected_for_active_map()
                 return True
 
         if not self.panel_rect.collidepoint(event.pos):
@@ -91,13 +115,25 @@ class VideoCamere:
         return False
 
     def queue_trigger(self):
-        color = (64, 186, 227, 110) if (self.is_open or self.is_trigger_hovered) else (64, 186, 227, 65)
+        if not self.trigger_visible:
+            return
+
+        if self.is_open:
+            # Keep CAM visible but subtle while monitor is open.
+            color = (64, 186, 227, 34)
+            text_color = (115, 216, 250, 130)
+        elif self.trigger_interactable:
+            color = (64, 186, 227, 110) if self.is_trigger_hovered else (64, 186, 227, 74)
+            text_color = (115, 216, 250, 235)
+        else:
+            return
+
         add_graphic_element(
             rect=self.trigger_rect,
             text="CAM",
             color=color,
             font=self.label_font,
-            text_color=(115, 216, 250, 235),
+            text_color=text_color,
             border_radius=12,
             border_color=(35, 35, 35, 255),
             border_width=2,
@@ -127,6 +163,24 @@ class VideoCamere:
             if feed["camera_id"] in visible:
                 self._selected_feed_idx = idx
                 return
+
+    def _remember_selected_for_active_map(self):
+        if not self._feeds:
+            return
+        current_id = self._feeds[self._selected_feed_idx]["camera_id"]
+        self._last_selected_camera_by_map[self._active_map] = current_id
+
+    def _restore_selected_for_active_map(self):
+        target_camera_id = self._last_selected_camera_by_map.get(self._active_map)
+        if not target_camera_id:
+            return False
+
+        for idx, feed in enumerate(self._feeds):
+            if feed["camera_id"] == target_camera_id:
+                self._selected_feed_idx = idx
+                return True
+
+        return False
 
     def close(self):
         self.is_open = False
@@ -450,17 +504,13 @@ class VideoCamere:
 
         now_ms = pygame.time.get_ticks()
 
-        shade = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        shade.fill((0, 0, 0, 132))
-        surface.blit(shade, (0, 0))
+        # Do not dim the rest of the office while cameras are open.
 
         pygame.draw.rect(surface, (18, 20, 24), self.panel_rect)
         pygame.draw.rect(surface, (92, 98, 106), self.panel_rect, width=2)
 
         title = self.title_font.render("SISTEMA CAMERE", True, (235, 235, 235))
-        subtitle = self.label_font.render("C per uscire | TAB switch mappa", True, (180, 190, 200))
-        surface.blit(title, title.get_rect(center=(self.width // 2, self.panel_rect.top + 44)))
-        surface.blit(subtitle, subtitle.get_rect(center=(self.width // 2, self.panel_rect.top + 84)))
+        surface.blit(title, title.get_rect(center=(self.panel_rect.centerx, self.panel_rect.top + 40)))
 
         if not self._feeds:
             missing = self.label_font.render("Nessuna immagine camera trovata in assets/images/cams", True, (255, 110, 110))
@@ -471,10 +521,10 @@ class VideoCamere:
         self._ensure_selected_feed_visible()
         active_feed = self._feeds[self._selected_feed_idx]
 
-        feed_area_top = self.panel_rect.top + 112
-        map_width = max(240, int(self.panel_rect.width * 0.36))
+        feed_area_top = self.panel_rect.top + 100
+        map_width = max(210, int(self.panel_rect.width * 0.34))
         map_height = map_width
-        map_height = min(map_height, max(200, int(self.panel_rect.height * 0.6)))
+        map_height = min(map_height, max(180, int(self.panel_rect.height * 0.58)))
         map_rect = pygame.Rect(
             self.panel_rect.right - map_width - 16,
             self.panel_rect.bottom - map_height - 16,
@@ -506,7 +556,36 @@ class VideoCamere:
             self._draw_total_jam(surface, feed_area)
 
         active_camera_id = active_feed["camera_id"]
-        if (not active_jammed) and active_camera_id in self._threat_cameras and self._threat_sprite is not None:
+        if (not active_jammed) and active_camera_id in self._threat_sprites_by_camera:
+            sprite_list = self._threat_sprites_by_camera[active_camera_id]
+            if sprite_list:
+                count = len(sprite_list)
+                usable_width = int(feed_area.width * 0.76)
+                max_sprite_w = max(36, usable_width // max(1, count))
+                base_sprite_h = int(feed_area.height * 0.62)
+                base_y = feed_area.bottom - int(feed_area.height * 0.06)
+                start_x = feed_area.centerx - (usable_width // 2)
+                for idx, sprite_surface in enumerate(sprite_list):
+                    target_h = max(36, base_sprite_h - (idx * 10))
+                    scale = target_h / max(1, sprite_surface.get_height())
+                    target_w = int(sprite_surface.get_width() * scale)
+                    if target_w > max_sprite_w:
+                        scale = max_sprite_w / max(1, sprite_surface.get_width())
+                        target_w = max(36, int(sprite_surface.get_width() * scale))
+                        target_h = max(36, int(sprite_surface.get_height() * scale))
+                    sprite = pygame.transform.smoothscale(sprite_surface, (target_w, target_h)).convert_alpha()
+                    sprite.set_alpha(220)
+
+                    group_gap = max(8, int(feed_area.width * 0.02))
+                    group_width = (target_w * count) + (group_gap * (count - 1))
+                    group_x = start_x + (usable_width - group_width) // 2
+                    x = group_x + idx * (target_w + group_gap)
+                    y = base_y - target_h + random.randint(-6, 6)
+                    surface.blit(sprite, (x, y))
+
+                warning = self.label_font.render("MOVIMENTO RILEVATO", True, (255, 90, 90))
+                surface.blit(warning, warning.get_rect(topright=(feed_area.right - 12, feed_area.top + 16)))
+        elif (not active_jammed) and active_camera_id in self._threat_cameras and self._threat_sprite is not None:
             sprite_h = int(feed_area.height * 0.65)
             sprite_w = int(self._threat_sprite.get_width() * (sprite_h / max(1, self._threat_sprite.get_height())))
             sprite_w = max(48, min(sprite_w, int(feed_area.width * 0.56)))
@@ -524,39 +603,15 @@ class VideoCamere:
             warning = self.label_font.render("MOVIMENTO RILEVATO", True, (255, 90, 90))
             surface.blit(warning, warning.get_rect(topright=(feed_area.right - 12, feed_area.top + 16)))
 
-            warning = self.label_font.render("MOVIMENTO RILEVATO", True, (255, 90, 90))
-            surface.blit(warning, warning.get_rect(topright=(feed_area.right - 12, feed_area.top + 16)))
-        elif (not active_jammed) and active_camera_id in self._threat_sprites_by_camera:
-            sprite_list = self._threat_sprites_by_camera[active_camera_id]
-            if sprite_list:
-                base_sprite_h = int(feed_area.height * 0.55)
-                positions = [(feed_area.left + int(feed_area.width * 0.25), feed_area.bottom - base_sprite_h),
-                             (feed_area.left + int(feed_area.width * 0.65), feed_area.bottom - base_sprite_h - 20)]
-                for idx, sprite_surface in enumerate(sprite_list):
-                    sprite_h = base_sprite_h - (idx * 15)
-                    sprite_h = max(32, sprite_h)
-                    sprite_w = int(sprite_surface.get_width() * (sprite_h / max(1, sprite_surface.get_height())))
-                    sprite_w = max(32, min(sprite_w, int(feed_area.width * 0.45)))
-                    sprite = pygame.transform.smoothscale(sprite_surface, (sprite_w, sprite_h)).convert_alpha()
-                    sprite.set_alpha(220)
-                    jitter_x = random.randint(-8, 8)
-                    jitter_y = random.randint(-4, 4)
-                    pos = positions[idx % len(positions)]
-                    sprite_x = pos[0] - (sprite_w // 2) + jitter_x
-                    sprite_y = pos[1] + jitter_y
-                    surface.blit(sprite, (sprite_x, sprite_y))
-                warning = self.label_font.render("MOVIMENTO RILEVATO", True, (255, 90, 90))
-                surface.blit(warning, warning.get_rect(topright=(feed_area.right - 12, feed_area.top + 16)))
-
         pygame.draw.rect(surface, (168, 172, 178), feed_area, width=2)
 
         cam_text = self.title_font.render(active_feed["label"], True, (245, 245, 245))
         surface.blit(cam_text, cam_text.get_rect(midleft=(feed_area.left + 12, feed_area.top + 26)))
 
-        button_w = max(120, int(map_rect.width * 0.48))
-        button_h = max(42, int(map_rect.height * 0.16))
+        button_w = max(108, int(map_rect.width * 0.44))
+        button_h = max(40, int(map_rect.height * 0.15))
         button_x = map_rect.left + (map_rect.width - button_w) // 2
-        button_y = max(self.panel_rect.top + 112, map_rect.top - button_h - 8)
+        button_y = max(self.panel_rect.top + 100, map_rect.top - button_h - 8)
         self._map_toggle_rect = pygame.Rect(button_x, button_y, button_w, button_h)
         toggle_text = "Map\nCondotti" if self._active_map == "main" else "Map\nPrincipale"
         self._draw_monitor_button(surface, self._map_toggle_rect, toggle_text)

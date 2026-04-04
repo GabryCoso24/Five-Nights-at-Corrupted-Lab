@@ -57,12 +57,16 @@ class GameEventHandlersMixin:
 
     def handle_game_events(self, event):
         if self.video_camere.handle_event(event):
+            if self.video_camere.is_open and self.flashlight_active:
+                self.flashlight_active = False
+                self.flashlight_repel_triggered = False
+                self.flashlight_repelled_targets.clear()
             return
 
         if event.type != pygame.KEYDOWN:
             return
 
-        if event.key == pygame.K_SPACE and self.flashlight_ready:
+        if event.key == pygame.K_SPACE and self.flashlight_ready and not self.video_camere.is_open:
             self.flashlight_active = True
             self.flashlight_activation_time = pygame.time.get_ticks()
             self.flashlight_ready = False

@@ -96,7 +96,8 @@ class GameRenderingMixin:
             self.enter_menu(play_click=True)
 
         self.screen.fill((0, 0, 0))
-        title = self.font_night.render(f"Notte {self.current_night - 1}", True, (235, 235, 235))
+        completed_night = getattr(self, "last_completed_night", max(1, self.current_night - 1))
+        title = self.font_night.render(f"Notte {completed_night}", True, (235, 235, 235))
         desc = self.font_night.render("SUPERATA!!", True, (235, 235, 235))
         self.screen.blit(title, title.get_rect(center=(self.width // 2, self.height // 2 - 40)))
         self.screen.blit(desc, desc.get_rect(center=(self.width // 2, self.height // 2 + 38)))
@@ -104,8 +105,12 @@ class GameRenderingMixin:
     def draw_game(self):
         mouse_pos = pygame.mouse.get_pos()
         mouse_x, _ = mouse_pos
-        self.camera.update_from_cursor(mouse_x)
+        if not self.video_camere.is_open:
+            self.camera.update_from_cursor(mouse_x)
         cam_x = self.camera.get_offset_x()
+        is_right_full = cam_x >= int(self.camera.max_offset * 0.9)
+        self.video_camere.set_trigger_visible(self.video_camere.is_open or is_right_full)
+        self.video_camere.set_trigger_interactable(self.video_camere.is_open or is_right_full)
 
         self.screen.blit(self.game_background, (-cam_x, 0))
 
@@ -129,12 +134,14 @@ class GameRenderingMixin:
                 self.audio.play_sound(self.flashlight_hit_sound, volume=0.8)
 
         label = self.orologio.update(now_ms)
+        hour_index = getattr(self.orologio, "hour_index", 0)
 
         watched_camera = self.video_camere.get_selected_camera_id() if self.video_camere.is_open else None
         player_can_defend = self.flashlight_ready or self.flashlight_active
         events = self.animatronics.update(
             now_ms=now_ms,
             night_level=self.current_night,
+            hour_index=hour_index,
             watched_camera=watched_camera,
             player_can_defend=player_can_defend,
         )
@@ -183,6 +190,8 @@ class GameRenderingMixin:
 
         clock_text = self.font_hour.render(label, True, (235, 235, 235))
         self.screen.blit(clock_text, clock_text.get_rect(topright=(self.width - 30, 24)))
+        night_text = self.font_small.render(f"Notte {self.current_night}", True, (235, 235, 235))
+        self.screen.blit(night_text, night_text.get_rect(topright=(self.width - 34, 94)))
 
         if self.flashlight_active:
             indicator_text = "Flashlight: ATTIVA"
@@ -206,15 +215,19 @@ class GameRenderingMixin:
             self._draw_door_threats(right_door_threats, cam_x, side="right")
 
         self.video_camere.update_hover(mouse_pos)
+        self.video_camere.draw_overlay(self.screen)
         self.video_camere.queue_trigger()
         draw_graphic_elements(self.screen)
-        self.video_camere.draw_overlay(self.screen)
 
         if now_ms < self.flashlight_repel_feedback_until:
             self._draw_flashlight_repel_feedback(now_ms)
 
         if self.orologio.is_finished():
-            self.current_night += 1
+            self.last_completed_night = self.current_night
+            if self.current_night < getattr(self, "max_night", 5):
+                self.current_night += 1
+            else:
+                self.current_night = getattr(self, "max_night", 5)
             self.can_continue = True
             self.exit_night()
             return

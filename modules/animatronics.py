@@ -51,9 +51,23 @@ class Animatronic:
 			return None
 		return self.route[self.route_index + 1]
 
-	def _schedule_next_move(self, now_ms: int, night_level: int) -> None:
-		# Harder pacing already from night 1.
-		delay = max(700, self.step_cooldown_ms - 420 - (night_level * 240))
+	def _hour_pressure(self, hour_index: int) -> float:
+		hour_multipliers = [0.55, 0.72, 0.88, 1.02, 1.16, 1.30]
+		return hour_multipliers[max(0, min(len(hour_multipliers) - 1, hour_index))]
+
+	def _night_pressure(self, night_level: int) -> float:
+		night_scale = {
+			1: 0.48,
+			2: 0.70,
+			3: 0.88,
+			4: 1.05,
+			5: 1.28,
+		}
+		return night_scale.get(max(1, night_level), 1.28)
+
+	def _schedule_next_move(self, now_ms: int, night_level: int, hour_index: int = 0) -> None:
+		# Later nights shorten the pause between movement attempts.
+		delay = max(700, self.step_cooldown_ms - 320 - (night_level * 220) - (hour_index * 90))
 		self.next_move_at = now_ms + delay
 
 	def stun(self, now_ms: int) -> None:
@@ -81,6 +95,7 @@ class Animatronic:
 		now_ms: int,
 		rng: random.Random,
 		night_level: int,
+		hour_index: int,
 		watched_camera: Optional[str] = None,
 		blocked_doors: Optional[Set[str]] = None,
 	) -> bool:
@@ -88,12 +103,13 @@ class Animatronic:
 			return False
 
 		if self.route_index >= len(self.route) - 1:
-			self._schedule_next_move(now_ms, night_level)
+			self._schedule_next_move(now_ms, night_level, hour_index)
 			return False
 
-		# Add a strong base pressure from night 1 and keep scaling by night.
-		difficulty_bonus = 0.10 + max(0, night_level - 1) * 0.05
-		chance = min(0.98, self.base_move_chance + difficulty_bonus)
+		# Combine hour-of-night pacing with the selected night difficulty.
+		hour_pressure = self._hour_pressure(hour_index)
+		night_pressure = self._night_pressure(night_level)
+		chance = min(0.98, self.base_move_chance * hour_pressure * night_pressure)
 		if watched_camera == self.current_camera:
 			chance *= self.watched_camera_penalty
 
@@ -101,17 +117,21 @@ class Animatronic:
 		if moved:
 			next_camera = self.peek_next_camera()
 			if blocked_doors and next_camera in blocked_doors:
-				self._schedule_next_move(now_ms, night_level)
+				self._schedule_next_move(now_ms, night_level, hour_index)
 				return False
 			self.route_index += 1
 			if self.is_at_office_door():
 				self.door_entered_at = now_ms
 
-		self._schedule_next_move(now_ms, night_level)
+		self._schedule_next_move(now_ms, night_level, hour_index)
 		return moved
 
-	def should_jumpscare(self, now_ms: int, player_can_defend: bool = True) -> bool:
+	def should_jumpscare(self, now_ms: int, player_can_defend: bool = True, hour_index: int = 0, night_level: int = 1) -> bool:
 		if not self.is_at_office_door():
+			return False
+		if hour_index < 1:
+			# The first hour is safe by design: the player can scout without getting punished.
+			self.door_entered_at = 0
 			return False
 		if not player_can_defend:
 			# Keep pressure without unfair instant kills while flashlight is unavailable.
@@ -121,7 +141,9 @@ class Animatronic:
 			return False
 		if self.door_entered_at <= 0:
 			self.door_entered_at = now_ms
-		return (now_ms - self.door_entered_at) >= self.attack_delay_ms
+
+		attack_delay = max(950, self.attack_delay_ms - ((max(1, min(5, night_level)) - 1) * 220) - (hour_index * 170))
+		return (now_ms - self.door_entered_at) >= attack_delay
 
 
 class AnimatronicsManager:
@@ -129,6 +151,11 @@ class AnimatronicsManager:
 		self.rng = random.Random(seed)
 		self.animatronics: Dict[str, Animatronic] = {a.name: a for a in animatronics}
 		self.routes_by_side = routes_by_side
+		self.roster_order = list(self.animatronics.keys())
+
+	def _active_names_for_night(self, night_level: int) -> List[str]:
+		active_count = max(1, min(len(self.roster_order), night_level))
+		return self.roster_order[:active_count]
 
 	def _assign_random_routes(self) -> None:
 		sides = ["left", "right"]
@@ -146,10 +173,12 @@ class AnimatronicsManager:
 		self,
 		now_ms: int,
 		night_level: int,
+		hour_index: int,
 		watched_camera: Optional[str],
 		player_can_defend: bool = True,
 	) -> List[dict]:
 		events: List[dict] = []
+		active_names = set(self._active_names_for_night(night_level))
 		occupied_doors: Set[str] = {
 			a.current_camera for a in self.animatronics.values() if a.current_camera in ("door_left", "door_right")
 		}
@@ -158,11 +187,15 @@ class AnimatronicsManager:
 		self.rng.shuffle(update_order)
 
 		for animatronic in update_order:
+			if animatronic.name not in active_names:
+				continue
+
 			before = animatronic.current_camera
 			if animatronic.try_advance(
 				now_ms=now_ms,
 				rng=self.rng,
 				night_level=night_level,
+				hour_index=hour_index,
 				watched_camera=watched_camera,
 				blocked_doors=occupied_doors,
 			):
@@ -177,7 +210,7 @@ class AnimatronicsManager:
 				if animatronic.current_camera in ("door_left", "door_right"):
 					occupied_doors.add(animatronic.current_camera)
 
-			if animatronic.should_jumpscare(now_ms, player_can_defend=player_can_defend):
+			if animatronic.should_jumpscare(now_ms, player_can_defend=player_can_defend, hour_index=hour_index, night_level=night_level):
 				events.append({"type": "jumpscare", "name": animatronic.name})
 
 		return events

@@ -1,5 +1,6 @@
 import sys
 import traceback
+import json
 import os
 
 import pygame
@@ -11,6 +12,58 @@ except Exception:
 
 
 class GameFlowMixin:
+    def _clamp_night(self, night_value):
+        try:
+            night_int = int(night_value)
+        except (TypeError, ValueError):
+            night_int = 1
+        max_night = max(1, int(getattr(self, "max_night", 5)))
+        return max(1, min(max_night, night_int))
+
+    def _get_progress_save_path(self):
+        return getattr(self, "progress_save_path", os.path.join(os.getcwd(), "savegame.json"))
+
+    def _load_progress(self):
+        data = self._read_progress_data()
+        completed = bool(data.get("completed", False)) if data else False
+        self.current_night = self._clamp_night(data.get("next_night", 1)) if not completed else 1
+        self.can_continue = bool(data) and not completed
+        return data
+
+    def _read_progress_data(self):
+        save_path = self._get_progress_save_path()
+        if not os.path.isfile(save_path):
+            return {}
+
+        try:
+            with open(save_path, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+        except (OSError, ValueError, json.JSONDecodeError):
+            return {}
+
+        if not isinstance(payload, dict):
+            return {}
+
+        return payload
+
+    def save_progress(self, next_night=None, completed=False):
+        save_path = self._get_progress_save_path()
+        progress = {
+            "schema_version": 1,
+            "next_night": self._clamp_night(next_night if next_night is not None else getattr(self, "current_night", 1)),
+            "completed": bool(completed),
+            "updated_at_ms": pygame.time.get_ticks(),
+        }
+
+        try:
+            with open(save_path, "w", encoding="utf-8") as handle:
+                json.dump(progress, handle, ensure_ascii=True, indent=2)
+        except OSError:
+            return False
+
+        self.can_continue = True
+        return True
+
     def _resolve_jumpscare_data(self, name):
         if not getattr(self, "jumpscare_assets", None):
             return None
@@ -89,10 +142,12 @@ class GameFlowMixin:
 
     def start_new_game(self):
         self.current_night = 1
-        self.can_continue = False
+        self.last_completed_night = 0
+        self.save_progress(next_night=self.current_night)
         self._enter_night_intro()
 
     def continue_game(self):
+        self._load_progress()
         if not self.can_continue:
             return
         self._enter_night_intro()
@@ -113,6 +168,7 @@ class GameFlowMixin:
         self.animatronics.reset()
         self.video_camere.set_threat_cameras([])
         self.jumpscare_name = ""
+        self.save_progress(next_night=self.current_night)
         self._stop_defeat_video()
         self._stop_victory_video()
         self.video_camere.close()
@@ -277,6 +333,11 @@ class GameFlowMixin:
     def exit_night(self):
         self.audio.play_sound(self.button_sound, volume=0.8)
         self.audio.stop_music(fade_ms=self.music_fade_ms)
+        if self.current_night >= getattr(self, "max_night", 5):
+            self.save_progress(next_night=1, completed=True)
+            self.can_continue = False
+        else:
+            self.save_progress(next_night=self.current_night, completed=False)
         self._start_victory_video()
 
     def enter_menu(self, play_click=False):

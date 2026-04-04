@@ -1,5 +1,6 @@
-import pygame
 import os
+
+import pygame
 
 from modules.animatronics import build_default_manager
 from modules.camera import Camera
@@ -17,6 +18,11 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
     def __init__(self, width, height):
         self.width = width
         self.height = height
+        self.max_night = 5
+        self.progress_save_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "savegame.json",
+        )
 
         self.is_fullscreen = False
         self.screen = None
@@ -26,6 +32,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
 
         self.state = "menu"
         self.current_night = 1
+        self.last_completed_night = 0
         self.can_continue = False
         self.error_message = None
 
@@ -75,10 +82,10 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         )
 
         self.video_camere.set_trigger_rect(
-            x=self.width - 70,
-            y=self.height/2 - 250,
-            w=100,
-            h=250
+            x=self.width - 54,
+            y=self.height / 2 - 255,
+            w=82,
+            h=210
         )
         self.video_camere.set_threat_sprite(self.default_enemy_sprite)
 
@@ -146,6 +153,8 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.victory_video_started_at = 0
         self.victory_video_last_frame_at = 0
         self.victory_video_frame_delay_ms = 33
+
+        self._load_progress()
 
     def _apply_display_mode(self):
         flags = pygame.FULLSCREEN if self.is_fullscreen else 0
