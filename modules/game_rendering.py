@@ -32,16 +32,45 @@ class GameRenderingMixin:
         self.screen.blit(red_flash, (0, 0))
 
     def draw_menu(self):
+        now_ms = pygame.time.get_ticks()
         self.screen.blit(self.menu_background, (0, 0))
 
+        # Draw menu video background if available, but always continue drawing menu UI.
+        if self.menu_video_cap is not None and now_ms - self.menu_video_last_frame_at >= self.menu_video_frame_delay_ms:
+            ok, frame = self.menu_video_cap.read()
+            self.menu_video_last_frame_at = now_ms
+
+            if not ok:
+                # OpenCV property id 1 == CAP_PROP_POS_FRAMES
+                self.menu_video_cap.set(1, 0)
+                ok, frame = self.menu_video_cap.read()
+
+            if ok and frame is not None:
+                frame_rgb = frame[:, :, ::-1]
+                frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
+                # Use fast scale instead of smoothscale to avoid performance issues
+                self.menu_video_last_surface = pygame.transform.scale(frame_surface, (self.width, self.height))
+
+        last_surface = getattr(self, "menu_video_last_surface", None)
+        if last_surface is not None:
+            self.screen.blit(last_surface, (0, 0))
+
         dim = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        dim.fill((0, 0, 0, 120))
+        dim.fill((6, 11, 6, 122))
         self.screen.blit(dim, (0, 0))
+
+        accent = pygame.Surface((6, int(self.height * 0.82)), pygame.SRCALPHA)
+        accent.fill((110, 166, 52, 190))
+        self.screen.blit(accent, (int(self.width * 0.066), int(self.height * 0.08)))
 
         title_jitter_x = random.randint(-2, 2)
         title_jitter_y = random.randint(-1, 1)
-        title = self.font_title.render("Five Nights at The Corrupted Lab", True, (245, 245, 245))
-        title_rect = title.get_rect(center=(self.width // 2 + title_jitter_x, self.height // 3 - 30 + title_jitter_y))
+        title = self.font_title.render("Five Nights at The Corrupted Lab", True, (199, 231, 120))
+        title_shadow = self.font_title.render("Five Nights at The Corrupted Lab", True, (7, 14, 7))
+        title_left_x = int(self.width * 0.08) + title_jitter_x
+        title_y = int(self.height * 0.09) + title_jitter_y
+        title_rect = title.get_rect(topleft=(title_left_x, title_y))
+        self.screen.blit(title_shadow, title_rect.move(4, 4))
         self.screen.blit(title, title_rect)
 
         self.queue_button(self.new_game_button, "New Game")
@@ -59,15 +88,19 @@ class GameRenderingMixin:
 
     def queue_button(self, rect, text):
         hovered = rect.collidepoint(pygame.mouse.get_pos())
-        color = (210, 210, 210) if hovered else (170, 170, 170)
+        base_fill = (92, 138, 46, 238)
+        hover_fill = (122, 176, 66, 252)
+        color = hover_fill if hovered else base_fill
+        border_color = (204, 238, 138, 255) if hovered else (33, 62, 24, 255)
+        text_color = (8, 20, 7) if hovered else (12, 26, 10)
         add_graphic_element(
             rect=rect,
             text=text,
             color=color,
             font=self.font_button,
-            text_color=(25, 25, 25),
-            border_radius=14,
-            border_color=(40, 40, 40),
+            text_color=text_color,
+            border_radius=16,
+            border_color=border_color,
             border_width=3,
         )
 
@@ -114,6 +147,57 @@ class GameRenderingMixin:
         hour = self.font_hour.render("Ore 12:00", True, (235, 235, 235))
         self.screen.blit(title, title.get_rect(center=(self.width // 2, self.height // 2 - 40)))
         self.screen.blit(hour, hour.get_rect(center=(self.width // 2, self.height // 2 + 38)))
+
+    def draw_night_tutorial(self):
+        self.screen.fill((0, 0, 0))
+        current_page = int(getattr(self, "tutorial_page", 0) or 0)
+
+        panel_w = min(1280, int(self.width * 0.84))
+        panel_h = min(760, int(self.height * 0.78))
+        panel = pygame.Rect(
+            (self.width - panel_w) // 2,
+            (self.height - panel_h) // 2,
+            panel_w,
+            panel_h,
+        )
+
+        pygame.draw.rect(self.screen, (12, 20, 12), panel, border_radius=14)
+        pygame.draw.rect(self.screen, (137, 198, 84), panel, width=3, border_radius=14)
+
+        title = self.font_night.render(f"Tutorial - Notte 1 ({current_page + 1}/2)", True, (216, 241, 174))
+        self.screen.blit(title, title.get_rect(center=(panel.centerx, panel.top + 62)))
+
+        if current_page == 0:
+            lines = [
+                "Obiettivo: sopravvivi fino alle 6 AM.",
+                "CAM: usa il trigger a destra per aprire il sistema telecamere.",
+                "Condotti: nelle CAM vent, doppio click su una tratta per chiuderla.",
+                "Torcia: premi SPACE quando sei in ufficio (non nelle CAM/pannello).",
+                "Errori di sistema: apri il pannello a sinistra e riavvia i moduli.",
+                "Se un nemico arriva alla porta, reagisci subito o perderai.",
+            ]
+            footer_text = "Premi INVIO o SPAZIO per continuare"
+        else:
+            lines = [
+                "Esistono animatronics letali e animatronics che causano errori.",
+                "Letali: se arrivano alla porta e non li gestisci in tempo, perdi.",
+                "Contromossa: osserva le CAM spesso e usa la torcia al momento giusto.",
+                "Tipo errore: aumentano la pressione attivando malfunzionamenti.",
+                "Contromossa: apri subito il pannello e riavvia i moduli in errore.",
+                "Regola d'oro: alterna controllo CAM e pannello, senza tunnel vision.",
+            ]
+            footer_text = "Premi INVIO o SPAZIO per iniziare"
+
+        y = panel.top + 140
+        for text in lines:
+            label = self.font_small.render(text, True, (230, 236, 224))
+            self.screen.blit(label, (panel.left + 44, y))
+            y += 58
+
+        footer = self.font_hour.render(footer_text, True, (173, 227, 113))
+        self.screen.blit(footer, footer.get_rect(center=(panel.centerx, panel.bottom - 66)))
+        skip_tutorial = self.font_small.render("Premi E per skippare il tutorial", True, (182, 220, 138))
+        self.screen.blit(skip_tutorial, skip_tutorial.get_rect(center=(panel.centerx, panel.bottom - 30)))
 
     def draw_night_outro(self):
         elapsed = pygame.time.get_ticks() - self.outro_start_time
@@ -390,7 +474,7 @@ class GameRenderingMixin:
             frame_surface = self.enemy_sprites.get(self.jumpscare_name, self.default_enemy_sprite)
 
         if frame_surface is not None:
-            scaled = pygame.transform.smoothscale(frame_surface, (self.width, self.height))
+            scaled = pygame.transform.scale(frame_surface, (self.width, self.height))
 
             shake_x = 0
             shake_y = 0
@@ -435,7 +519,7 @@ class GameRenderingMixin:
 
         frame_rgb = frame[:, :, ::-1]
         frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
-        frame_surface = pygame.transform.smoothscale(frame_surface, (self.width, self.height))
+        frame_surface = pygame.transform.scale(frame_surface, (self.width, self.height))
         self.screen.blit(frame_surface, (0, 0))
         self._draw_end_video_label("GAME OVER", (255, 90, 90))
 
@@ -463,9 +547,73 @@ class GameRenderingMixin:
 
         frame_rgb = frame[:, :, ::-1]
         frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
-        frame_surface = pygame.transform.smoothscale(frame_surface, (self.width, self.height))
+        frame_surface = pygame.transform.scale(frame_surface, (self.width, self.height))
         self.screen.blit(frame_surface, (0, 0))
         self._draw_end_video_label("NOTTE SUPERATA", (120, 255, 150))
+
+    def draw_endgame_video(self):
+        now_ms = pygame.time.get_ticks()
+
+        if self.endgame_video_cap is None:
+            self.screen.fill((0, 0, 0))
+            self._draw_end_video_label("ENDGAME", (255, 220, 120))
+            info = self.font_small.render("Video endgame non disponibile", True, (255, 220, 120))
+            self.screen.blit(info, info.get_rect(center=(self.width // 2, self.height // 2)))
+            skip_hint = self.font_small.render("Premi E per skippare", True, (245, 220, 170))
+            self.screen.blit(skip_hint, skip_hint.get_rect(bottomright=(self.width - 26, self.height - 24)))
+            if now_ms - self.endgame_video_started_at >= 1500:
+                self._start_credits_video()
+            return
+
+        if now_ms - self.endgame_video_last_frame_at < self.endgame_video_frame_delay_ms:
+            return
+
+        ok, frame = self.endgame_video_cap.read()
+        self.endgame_video_last_frame_at = now_ms
+
+        if not ok:
+            self._start_credits_video()
+            return
+
+        frame_rgb = frame[:, :, ::-1]
+        frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
+        frame_surface = pygame.transform.scale(frame_surface, (self.width, self.height))
+        self.screen.blit(frame_surface, (0, 0))
+        self._draw_end_video_label("ENDGAME", (255, 220, 120))
+        skip_hint = self.font_small.render("Premi E per skippare", True, (245, 220, 170))
+        self.screen.blit(skip_hint, skip_hint.get_rect(bottomright=(self.width - 26, self.height - 24)))
+
+    def draw_credits_video(self):
+        now_ms = pygame.time.get_ticks()
+
+        if self.credits_video_cap is None:
+            self.screen.fill((0, 0, 0))
+            self._draw_end_video_label("CREDITS", (180, 220, 255))
+            info = self.font_small.render("Video credits non disponibile", True, (180, 220, 255))
+            self.screen.blit(info, info.get_rect(center=(self.width // 2, self.height // 2)))
+            skip_hint = self.font_small.render("Premi E per skippare", True, (180, 220, 255))
+            self.screen.blit(skip_hint, skip_hint.get_rect(bottomright=(self.width - 26, self.height - 24)))
+            if now_ms - self.credits_video_started_at >= 1500:
+                self.enter_menu(play_click=False)
+            return
+
+        if now_ms - self.credits_video_last_frame_at < self.credits_video_frame_delay_ms:
+            return
+
+        ok, frame = self.credits_video_cap.read()
+        self.credits_video_last_frame_at = now_ms
+
+        if not ok:
+            self.enter_menu(play_click=False)
+            return
+
+        frame_rgb = frame[:, :, ::-1]
+        frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
+        frame_surface = pygame.transform.scale(frame_surface, (self.width, self.height))
+        self.screen.blit(frame_surface, (0, 0))
+        self._draw_end_video_label("CREDITS", (180, 220, 255))
+        skip_hint = self.font_small.render("Premi E per skippare", True, (180, 220, 255))
+        self.screen.blit(skip_hint, skip_hint.get_rect(bottomright=(self.width - 26, self.height - 24)))
 
     def _draw_door_threats(self, door_threats, cam_x, side="right"):
         # Anchor near the office side door in world space, then convert to screen space.

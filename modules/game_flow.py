@@ -312,6 +312,8 @@ class GameFlowMixin:
             self.draw_menu()
         elif self.state == "night_intro":
             self.draw_night_intro()
+        elif self.state == "night_tutorial":
+            self.draw_night_tutorial()
         elif self.state == "night_outro":
             self.draw_night_outro()
         elif self.state == "jumpscare":
@@ -320,6 +322,10 @@ class GameFlowMixin:
             self.draw_defeat_video()
         elif self.state == "victory_video":
             self.draw_victory_video()
+        elif self.state == "endgame_video":
+            self.draw_endgame_video()
+        elif self.state == "credits_video":
+            self.draw_credits_video()
         elif self.state == "game":
             self.draw_game()
 
@@ -332,6 +338,7 @@ class GameFlowMixin:
     def start_new_game(self):
         self.current_night = 1
         self.last_completed_night = 0
+        self.first_night_tutorial_seen = False
         self.save_progress(next_night=self.current_night)
         self._enter_night_intro()
 
@@ -345,7 +352,19 @@ class GameFlowMixin:
         # Backward-compatible alias.
         self.start_new_game()
 
+    def _enter_first_night_tutorial(self):
+        self.first_night_tutorial_seen = True
+        self.tutorial_started_at = pygame.time.get_ticks()
+        self.tutorial_page = 0
+        self.state = "night_tutorial"
+
     def start_gameplay(self):
+        if self.current_night == 1 and not bool(getattr(self, "first_night_tutorial_seen", False)):
+            self._enter_first_night_tutorial()
+            return
+        self._begin_gameplay_session()
+
+    def _begin_gameplay_session(self):
         self._stop_jumpscare_media()
         self.state = "game"
         self.orologio.start(pygame.time.get_ticks())
@@ -449,6 +468,13 @@ class GameFlowMixin:
                 self.defeat_video_cap = cv2.VideoCapture(self.defeat_video_path)
                 if not self.defeat_video_cap.isOpened():
                     self.defeat_video_cap = None
+                else:
+                    # Calculate frame delay based on video FPS
+                    fps = float(self.defeat_video_cap.get(cv2.CAP_PROP_FPS) or 0.0)
+                    if fps > 0:
+                        self.defeat_video_frame_delay_ms = int(1000.0 / fps)
+                    else:
+                        self.defeat_video_frame_delay_ms = 33
             except Exception:
                 self.defeat_video_cap = None
 
@@ -505,6 +531,13 @@ class GameFlowMixin:
                 self.victory_video_cap = cv2.VideoCapture(self.victory_video_path)
                 if not self.victory_video_cap.isOpened():
                     self.victory_video_cap = None
+                else:
+                    # Calculate frame delay based on video FPS
+                    fps = float(self.victory_video_cap.get(cv2.CAP_PROP_FPS) or 0.0)
+                    if fps > 0:
+                        self.victory_video_frame_delay_ms = int(1000.0 / fps)
+                    else:
+                        self.victory_video_frame_delay_ms = 33
             except Exception:
                 self.victory_video_cap = None
 
@@ -541,6 +574,159 @@ class GameFlowMixin:
         self.victory_video_path = None
         self.victory_video_audio_started = False
 
+    def _start_endgame_video(self):
+        self._stop_endgame_video()
+        self._stop_system_loop_sounds()
+        self.endgame_video_started_at = pygame.time.get_ticks()
+        self.endgame_video_last_frame_at = 0
+        self.endgame_video_path = None
+        self.endgame_video_audio_started = False
+
+        for candidate in getattr(self, "endgame_video_candidates", []):
+            if os.path.isfile(candidate):
+                self.endgame_video_path = candidate
+                break
+
+        if self.endgame_video_path and cv2 is not None:
+            try:
+                self.endgame_video_cap = cv2.VideoCapture(self.endgame_video_path)
+                if not self.endgame_video_cap.isOpened():
+                    self.endgame_video_cap = None
+                else:
+                    fps = float(self.endgame_video_cap.get(cv2.CAP_PROP_FPS) or 0.0)
+                    if fps > 0:
+                        self.endgame_video_frame_delay_ms = int(1000.0 / fps)
+                    else:
+                        self.endgame_video_frame_delay_ms = 33
+            except Exception:
+                self.endgame_video_cap = None
+
+        if self.endgame_video_path:
+            self.endgame_video_audio_started = self.audio.play_music(
+                music_file=self.endgame_video_path,
+                loop=False,
+                volume=1.0,
+            )
+
+        if not self.endgame_video_audio_started:
+            for candidate in getattr(self, "endgame_video_audio_candidates", []):
+                if not os.path.isfile(candidate):
+                    continue
+                self.endgame_video_audio_started = self.audio.play_music(
+                    music_file=candidate,
+                    loop=False,
+                    volume=1.0,
+                )
+                if self.endgame_video_audio_started:
+                    break
+
+        self.state = "endgame_video"
+
+    def _stop_endgame_video(self):
+        if self.endgame_video_cap is not None:
+            try:
+                self.endgame_video_cap.release()
+            except Exception:
+                pass
+        if self.endgame_video_audio_started:
+            self.audio.stop_music()
+        self.endgame_video_cap = None
+        self.endgame_video_path = None
+        self.endgame_video_audio_started = False
+
+    def _start_credits_video(self):
+        self._stop_credits_video()
+        self._stop_system_loop_sounds()
+        self.credits_video_started_at = pygame.time.get_ticks()
+        self.credits_video_last_frame_at = 0
+        self.credits_video_path = None
+        self.credits_video_audio_started = False
+
+        for candidate in getattr(self, "credits_video_candidates", []):
+            if os.path.isfile(candidate):
+                self.credits_video_path = candidate
+                break
+
+        if self.credits_video_path and cv2 is not None:
+            try:
+                self.credits_video_cap = cv2.VideoCapture(self.credits_video_path)
+                if not self.credits_video_cap.isOpened():
+                    self.credits_video_cap = None
+                else:
+                    fps = float(self.credits_video_cap.get(cv2.CAP_PROP_FPS) or 0.0)
+                    if fps > 0:
+                        self.credits_video_frame_delay_ms = int(1000.0 / fps)
+                    else:
+                        self.credits_video_frame_delay_ms = 33
+            except Exception:
+                self.credits_video_cap = None
+
+        if self.credits_video_path:
+            self.credits_video_audio_started = self.audio.play_music(
+                music_file=self.credits_video_path,
+                loop=False,
+                volume=1.0,
+            )
+
+        if not self.credits_video_audio_started:
+            for candidate in getattr(self, "credits_video_audio_candidates", []):
+                if not os.path.isfile(candidate):
+                    continue
+                self.credits_video_audio_started = self.audio.play_music(
+                    music_file=candidate,
+                    loop=False,
+                    volume=1.0,
+                )
+                if self.credits_video_audio_started:
+                    break
+
+        self.state = "credits_video"
+
+    def _stop_credits_video(self):
+        if self.credits_video_cap is not None:
+            try:
+                self.credits_video_cap.release()
+            except Exception:
+                pass
+        if self.credits_video_audio_started:
+            self.audio.stop_music()
+        self.credits_video_cap = None
+        self.credits_video_path = None
+        self.credits_video_audio_started = False
+
+    def _load_menu_video(self):
+        if self.menu_video_cap is not None:
+            try:
+                self.menu_video_cap.release()
+            except Exception:
+                pass
+        self.menu_video_cap = None
+        self.menu_video_path = None
+        self.menu_video_last_surface = None
+        self.menu_video_last_frame_at = 0
+
+        for candidate in getattr(self, "menu_video_candidates", []):
+            if not os.path.isfile(candidate):
+                continue
+            self.menu_video_path = candidate
+            break
+
+        if self.menu_video_path and cv2 is not None:
+            try:
+                self.menu_video_cap = cv2.VideoCapture(self.menu_video_path)
+                if not self.menu_video_cap.isOpened():
+                    self.menu_video_cap = None
+                else:
+                    # Calculate frame delay based on video FPS
+                    fps = float(self.menu_video_cap.get(cv2.CAP_PROP_FPS) or 0.0)
+                    if fps > 0:
+                        self.menu_video_frame_delay_ms = int(1000.0 / fps)
+                    else:
+                        # Fallback: assume 30 FPS if FPS detection fails
+                        self.menu_video_frame_delay_ms = 33
+            except Exception:
+                self.menu_video_cap = None
+
     def exit_night(self):
         self.audio.play_sound(self.button_sound, volume=0.8)
         self.audio.stop_music(fade_ms=self.music_fade_ms)
@@ -548,9 +734,10 @@ class GameFlowMixin:
         if getattr(self, "last_completed_night", 0) >= getattr(self, "max_night", 5):
             self.save_progress(next_night=1, completed=True)
             self.can_continue = False
+            self._start_endgame_video()
         else:
             self.save_progress(next_night=self.current_night, completed=False)
-        self._start_victory_video()
+            self._start_victory_video()
 
     def enter_menu(self, play_click=False):
         if play_click:
@@ -562,8 +749,11 @@ class GameFlowMixin:
         self._stop_jumpscare_media()
         self._stop_defeat_video()
         self._stop_victory_video()
+        self._stop_endgame_video()
+        self._stop_credits_video()
         self.audio.play_music(music_file=self.menu_music, fade_ms=self.music_fade_ms)
         self.video_camere.set_threat_cameras([])
         self.video_camere.close()
         self.system_panel.is_open = False
         self.state = "menu"
+        self._load_menu_video()

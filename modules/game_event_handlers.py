@@ -16,6 +16,16 @@ class GameEventHandlersMixin:
         elif self.state == "night_intro":
             if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_SPACE):
                 self.start_gameplay()
+        elif self.state == "night_tutorial":
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_e:
+                    self._begin_gameplay_session()
+                elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                    current_page = int(getattr(self, "tutorial_page", 0) or 0)
+                    if current_page < 1:
+                        self.tutorial_page = current_page + 1
+                    else:
+                        self._begin_gameplay_session()
         elif self.state == "night_outro":
             if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_SPACE):
                 self.enter_menu(play_click=True)
@@ -32,6 +42,16 @@ class GameEventHandlersMixin:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
                 now_ms = pygame.time.get_ticks()
                 if now_ms - self.victory_video_started_at >= 700:
+                    self.enter_menu(play_click=False)
+        elif self.state == "endgame_video":
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
+                now_ms = pygame.time.get_ticks()
+                if now_ms - self.endgame_video_started_at >= 700:
+                    self._start_credits_video()
+        elif self.state == "credits_video":
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
+                now_ms = pygame.time.get_ticks()
+                if now_ms - self.credits_video_started_at >= 700:
                     self.enter_menu(play_click=False)
         elif self.state == "game":
             self.handle_game_events(event)

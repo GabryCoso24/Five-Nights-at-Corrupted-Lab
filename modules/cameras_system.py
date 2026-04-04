@@ -1157,7 +1157,14 @@ class VideoCamere:
                 continue
 
             camera_id = self._camera_id_from_filename(filename)
-            label = f"CAM {camera_id.replace('cam', '')}" if camera_id.startswith("cam") else camera_id.upper()
+            if camera_id.startswith("cam"):
+                raw_num = camera_id.replace("cam", "")
+                if raw_num.isdigit():
+                    label = f"CAM {int(raw_num):02d}"
+                else:
+                    label = f"CAM {raw_num}"
+            else:
+                label = camera_id.upper()
             self._feeds.append(
                 {
                     "surface": image,
@@ -1223,7 +1230,7 @@ class VideoCamere:
                 {
                     "surface": self._build_vent_placeholder(f"CAM {cam_n}"),
                     "camera_id": cam_id,
-                    "label": f"CAM {cam_n}",
+                    "label": f"CAM {cam_n:02d}",
                     "filename": "virtual_vent",
                 }
             )
@@ -1644,7 +1651,7 @@ class VideoCamere:
         pygame.draw.rect(surface, (168, 172, 178), feed_area, width=2)
 
         cam_text = self.title_font.render(active_feed["label"], True, (245, 245, 245))
-        surface.blit(cam_text, cam_text.get_rect(midleft=(feed_area.left + 12, feed_area.top + 26)))
+        surface.blit(cam_text, cam_text.get_rect(midleft=(feed_area.left + 12, feed_area.top + 34)))
 
         button_w = max(108, int(map_rect.width * 0.44))
         button_h = max(40, int(map_rect.height * 0.15))

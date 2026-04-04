@@ -102,18 +102,15 @@ class Animatronic:
 		self.door_entered_at = 0
 		self.watched_since_at = 0
 
-		# Strong pushback from door/near-door to give the player fair reaction window.
-		if self.is_at_office_door():
-			pushback_steps = 2 if self.can_trigger_error else 1
-			self.route_index = max(0, self.route_index - pushback_steps)
+		# Push farther than the last pre-door node to prevent flashlight spam at cam1/cam14.
+		target_index = max(0, len(self.route) - 4)
+		if self.route_index > target_index:
+			self.route_index = target_index
 		else:
-			if self.can_trigger_error:
-				self.route_index = max(0, self.route_index - 1)
-			else:
-				self.route_index = max(0, self.route_index)
+			self.route_index = max(0, self.route_index - 1)
 
 		# Delay the next move so the repel is clearly visible in gameplay.
-		self.next_move_at = max(self.next_move_at, now_ms + 900)
+		self.next_move_at = max(self.next_move_at, now_ms + 1700)
 		return True
 
 	def try_advance(
@@ -203,17 +200,28 @@ class AnimatronicsManager:
 		self.navigation_graph: Dict[str, List[str]] = {}
 		self.route_side_by_name: Dict[str, str] = {}
 		self.visibility_enabled_at: Dict[str, int] = {}
+		self.side_attack_cooldown_until: Dict[str, int] = {"left": 0, "right": 0}
+		self.side_attack_cooldown_ms: int = 2300
+		self.last_dynamic_reroute_at: Dict[str, int] = {}
+		self.dynamic_reroute_cooldown_ms: int = 2600
+		self.dynamic_reroute_chance: float = 0.26
 
 	def _active_names_for_night(self, night_level: int) -> List[str]:
 		active_count = max(1, min(len(self.roster_order), night_level))
 		return self.roster_order[:active_count]
 
 	def _assign_random_routes(self) -> None:
-		sides = ["left", "right"]
 		names = list(self.animatronics.keys())
+		self.rng.shuffle(names)
 
-		for idx, name in enumerate(names):
-			side = sides[idx % 2]
+		half = len(names) // 2
+		left_group = set(names[:half])
+
+		for name in names:
+			side = "left" if name in left_group else "right"
+			# Small random flip each reset to avoid repeated predictable pairings.
+			if self.rng.random() < 0.25:
+				side = "right" if side == "left" else "left"
 			self.route_side_by_name[name] = side
 			if self.navigation_graph:
 				route = self._build_route_with_choices(start_node="cam10", side=side)
@@ -250,47 +258,91 @@ class AnimatronicsManager:
 				queue.append(prev)
 		return dist
 
-	def _build_route_with_choices(self, start_node: str, side: str, avoid_nodes: Optional[Set[str]] = None) -> List[str]:
-		target_entry_nodes = {"cam1", "office_left"} if side == "left" else {"cam14", "office_right"}
-		dist = self._reverse_distances(target_entry_nodes)
-		blocked_nodes = set(avoid_nodes or [])
+	def _find_shortest_path_with_blocks(self, start_node: str, target_nodes: Set[str], blocked_nodes: Optional[Set[str]] = None) -> List[str]:
+		blocked = set(blocked_nodes or set())
+		if start_node in blocked:
+			return []
 
-		if start_node not in dist or start_node in blocked_nodes:
-			fallback = self.routes_by_side.get(side, [])
-			return list(fallback) if fallback else [start_node, f"door_{side}"]
-
-		route = [start_node]
+		queue = deque([[start_node]])
 		visited = {start_node}
-		current = start_node
-		max_steps = 24
+		while queue:
+			path = queue.popleft()
+			node = path[-1]
+			if node in target_nodes:
+				return path
 
-		for _ in range(max_steps):
-			if current in target_entry_nodes:
-				break
-			neighbors = [n for n in self.navigation_graph.get(current, []) if n in dist and n not in blocked_nodes]
-			if not neighbors:
-				break
+			for nxt in self.navigation_graph.get(node, []):
+				if nxt in visited or nxt in blocked:
+					continue
+				visited.add(nxt)
+				queue.append(path + [nxt])
+		return []
 
-			best_dist = min(dist[n] for n in neighbors)
-			preferred = [n for n in neighbors if dist[n] <= best_dist + 1 and n not in visited]
-			pool = preferred if preferred else [n for n in neighbors if dist[n] <= best_dist + 1]
-			next_node = self.rng.choice(pool)
+	def _build_route_with_choices(self, start_node: str, side: str, avoid_nodes: Optional[Set[str]] = None) -> List[str]:
+		blocked_nodes = set(avoid_nodes or [])
+		primary_targets = {"cam1", "office_left"} if side == "left" else {"cam14", "office_right"}
+		primary_dist = self._reverse_distances(primary_targets)
 
-			route.append(next_node)
-			visited.add(next_node)
-			current = next_node
+		def _stochastic_walk(target_nodes: Set[str], dist_map: Dict[str, int]) -> List[str]:
+			if start_node in blocked_nodes or start_node not in dist_map:
+				return []
 
-		if route[-1] not in target_entry_nodes:
-			fallback = self.routes_by_side.get(side, [])
-			if fallback:
-				return list(fallback)
+			route = [start_node]
+			visited = {start_node}
+			current = start_node
+			max_steps = 26
 
-		route.append(f"door_{side}")
-		return route
+			for _ in range(max_steps):
+				if current in target_nodes:
+					break
+
+				neighbors = [
+					n for n in self.navigation_graph.get(current, [])
+					if n in dist_map and n not in blocked_nodes
+				]
+				if not neighbors:
+					break
+
+				best_dist = min(dist_map[n] for n in neighbors)
+				slack = 1 if self.rng.random() < 0.70 else 2
+				good = [n for n in neighbors if dist_map[n] <= best_dist + slack]
+				unvisited_good = [n for n in good if n not in visited]
+				pool = unvisited_good if unvisited_good else good
+				nxt = self.rng.choice(pool)
+
+				route.append(nxt)
+				visited.add(nxt)
+				current = nxt
+
+			if route and route[-1] in target_nodes:
+				return route
+			return []
+
+		path = _stochastic_walk(primary_targets, primary_dist)
+		if not path:
+			path = self._find_shortest_path_with_blocks(start_node, primary_targets, blocked_nodes)
+
+		if not path:
+			alt_targets = {"cam14", "office_right"} if side == "left" else {"cam1", "office_left"}
+			alt_dist = self._reverse_distances(alt_targets)
+			path = _stochastic_walk(alt_targets, alt_dist)
+			if not path:
+				path = self._find_shortest_path_with_blocks(start_node, alt_targets, blocked_nodes)
+
+		if not path:
+			door_side = side if side in ("left", "right") else "right"
+			return [start_node, f"door_{door_side}"]
+
+		end_node = path[-1]
+		door = "door_left" if end_node in ("cam1", "office_left") else "door_right"
+		if path[-1] != door:
+			path.append(door)
+		return path
 
 	def reset(self) -> None:
 		self._assign_random_routes()
 		self.visibility_enabled_at.clear()
+		self.last_dynamic_reroute_at.clear()
 
 	def set_error_animatronic_visibility_delay(self, now_ms: int, delay_ms: int, night_level: int = 1) -> None:
 		"""Set when error-causing animatronics become visible. Before this time, they won't appear on cameras."""
@@ -344,6 +396,33 @@ class AnimatronicsManager:
 		animatronic.stunned_until = old_stunned
 		animatronic.door_entered_at = old_door_entered
 
+	def _maybe_dynamic_reroute(self, animatronic: Animatronic, side: str, now_ms: int) -> None:
+		if not self.navigation_graph or animatronic.is_at_office_door():
+			return
+		last_at = int(self.last_dynamic_reroute_at.get(animatronic.name, 0) or 0)
+		if now_ms - last_at < self.dynamic_reroute_cooldown_ms:
+			return
+		if self.rng.random() > self.dynamic_reroute_chance:
+			return
+		self._reroute_from_current(animatronic, side)
+		self.last_dynamic_reroute_at[animatronic.name] = now_ms
+
+	def _route_side(self, animatronic: Animatronic) -> str:
+		if animatronic.route and animatronic.route[-1] == "door_left":
+			return "left"
+		if animatronic.route and animatronic.route[-1] == "door_right":
+			return "right"
+		return self.route_side_by_name.get(animatronic.name, "right")
+
+	def _set_side_attack_cooldown(self, side: str, now_ms: int, extra_ms: int = 0) -> None:
+		if side not in self.side_attack_cooldown_until:
+			return
+		until = now_ms + max(0, int(self.side_attack_cooldown_ms + extra_ms))
+		self.side_attack_cooldown_until[side] = max(int(self.side_attack_cooldown_until.get(side, 0) or 0), until)
+
+	def _is_side_in_attack_cooldown(self, side: str, now_ms: int) -> bool:
+		return now_ms < int(self.side_attack_cooldown_until.get(side, 0) or 0)
+
 	def update(
 		self,
 		now_ms: int,
@@ -374,6 +453,25 @@ class AnimatronicsManager:
 		blocked_nodes: Set[str] = {
 			a.current_camera for a in self.animatronics.values() if a.current_camera in ("door_left", "door_right")
 		}
+		side_presence = {
+			"left": {"lethal": 0, "error": 0},
+			"right": {"lethal": 0, "error": 0},
+		}
+		for other in self.animatronics.values():
+			if other.name not in active_names:
+				continue
+			if not other.is_near_office_door():
+				continue
+			other_side = self._route_side(other)
+			if other_side not in side_presence:
+				continue
+			bucket = "error" if other.can_trigger_error else "lethal"
+			side_presence[other_side][bucket] += 1
+		mixed_near_door_sides = {
+			side_name
+			for side_name, payload in side_presence.items()
+			if payload["error"] > 0 and payload["lethal"] > 0
+		}
 
 		update_order = list(self.animatronics.values())
 		self.rng.shuffle(update_order)
@@ -382,7 +480,28 @@ class AnimatronicsManager:
 			if animatronic.name not in active_names:
 				continue
 
-			side = self.route_side_by_name.get(animatronic.name)
+			side = self._route_side(animatronic)
+
+			if (not animatronic.can_trigger_error) and side in ("left", "right") and self._is_side_in_attack_cooldown(side, now_ms) and animatronic.is_near_office_door():
+				animatronic.door_entered_at = 0
+				animatronic.watched_since_at = 0
+				if animatronic.route_index > 0:
+					animatronic.route_index -= 1
+				animatronic.stun(now_ms)
+				animatronic.next_move_at = max(animatronic.next_move_at, now_ms + 900)
+				continue
+
+			# Prevent mixed-type stack on the same side near office: error-type yields and reroutes.
+			if animatronic.can_trigger_error and side in mixed_near_door_sides and animatronic.is_near_office_door():
+				animatronic.route_index = max(0, animatronic.route_index - 1)
+				animatronic.door_entered_at = 0
+				animatronic.watched_since_at = 0
+				animatronic.stun(now_ms)
+				animatronic.next_move_at = max(animatronic.next_move_at, now_ms + 1400)
+				if side in ("left", "right"):
+					opposite_side = "right" if side == "left" else "left"
+					self._reroute_from_current(animatronic, opposite_side)
+				continue
 
 			if animatronic.current_camera in blocked_vent_nodes:
 				if animatronic.blocked_vent_since_at <= 0:
@@ -431,7 +550,7 @@ class AnimatronicsManager:
 			else:
 				animatronic.blocked_vent_since_at = 0
 			if side:
-				self._reroute_from_current(animatronic, side)
+				self._maybe_dynamic_reroute(animatronic, side, now_ms)
 
 			# Error-type animatronics can't move or attack until they become visible
 			if animatronic.can_trigger_error and not self._is_animatronic_visible(animatronic.name, now_ms):
@@ -461,6 +580,7 @@ class AnimatronicsManager:
 						animatronic.stun(now_ms)
 						continue
 					blocked_nodes.add(animatronic.current_camera)
+					self._set_side_attack_cooldown(side, now_ms)
 
 			if animatronic.can_trigger_error:
 				is_watched = (
@@ -512,6 +632,7 @@ class AnimatronicsManager:
 					animatronic.stun(now_ms)
 					animatronic.route_index = max(0, animatronic.route_index - 1)
 					continue
+				self._set_side_attack_cooldown(side, now_ms, extra_ms=900)
 				events.append({"type": "jumpscare", "name": animatronic.name})
 
 		return events
@@ -524,6 +645,9 @@ class AnimatronicsManager:
 				continue
 			if animatronic.repel_with_flashlight(now_ms):
 				stunned.append(animatronic.name)
+				if not animatronic.can_trigger_error:
+					side = self._route_side(animatronic)
+					self._set_side_attack_cooldown(side, now_ms, extra_ms=600)
 		return stunned
 
 	def on_error_jumpscare_finished(self, now_ms: int, target_name: Optional[str] = None) -> None:

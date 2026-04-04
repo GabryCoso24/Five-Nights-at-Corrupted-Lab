@@ -71,11 +71,23 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.camera = Camera(self.width, self.game_background.get_width(), smoothing=0.13)
         self.audio = AudioManager()
 
-        self.font_title = pygame.font.SysFont(None, 96)
-        self.font_button = pygame.font.SysFont(None, 56)
-        self.font_night = pygame.font.SysFont(None, 92)
-        self.font_hour = pygame.font.SysFont(None, 68)
-        self.font_small = pygame.font.SysFont(None, 36)
+        def _pick_font(candidates):
+            for name in candidates:
+                try:
+                    if pygame.font.match_font(name):
+                        return name
+                except Exception:
+                    continue
+            return None
+
+        title_font_name = _pick_font(["bahnschrift", "impact", "arial black", "verdana"])
+        ui_font_name = _pick_font(["trebuchet ms", "segoe ui", "verdana", "arial"])
+
+        self.font_title = pygame.font.SysFont(title_font_name, 102, bold=True)
+        self.font_button = pygame.font.SysFont(ui_font_name, 52, bold=True)
+        self.font_night = pygame.font.SysFont(title_font_name, 92, bold=True)
+        self.font_hour = pygame.font.SysFont(ui_font_name, 68, bold=True)
+        self.font_small = pygame.font.SysFont(ui_font_name, 34)
 
         self.video_camere = VideoCamere(
             width=self.width,
@@ -85,7 +97,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         )
 
         self.video_camere.set_trigger_rect(
-            x=self.width - 54,
+            x=self.width - 92,
             y=self.height / 2 - 255,
             w=82,
             h=210
@@ -130,10 +142,10 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.error_animatronic_visibility_delay_ms = 45000
 
         button_width, button_height = 280, 80
-        center_x = (self.width - button_width) // 2
-        self.new_game_button = pygame.Rect(center_x, self.height // 2 - 80, button_width, button_height)
-        self.continue_button = pygame.Rect(center_x, self.height // 2 + 15, button_width, button_height)
-        self.exit_button = pygame.Rect(center_x, self.height // 2 + 110, button_width, button_height)
+        left_x = int(self.width * 0.08)
+        self.new_game_button = pygame.Rect(left_x, self.height // 2 - 80, button_width, button_height)
+        self.continue_button = pygame.Rect(left_x, self.height // 2 + 15, button_width, button_height)
+        self.exit_button = pygame.Rect(left_x, self.height // 2 + 110, button_width, button_height)
 
         self.menu_music = "assets/audio/menu.wav"
         self.gameplay_ambience_music = "assets/audio/ambience.wav"
@@ -147,6 +159,9 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
 
         self.intro_start_time = 0
         self.outro_start_time = 0
+        self.tutorial_started_at = 0
+        self.tutorial_page = 0
+        self.first_night_tutorial_seen = False
 
         self.flashlight_ready = True
         self.flashlight_active = False
@@ -212,10 +227,62 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.victory_video_started_at = 0
         self.victory_video_last_frame_at = 0
         self.victory_video_frame_delay_ms = 33
+        self.endgame_video_candidates = [
+            os.path.join("assets", "video", "endgame_scene.mkv"),
+            os.path.join("assets", "video", "endgame_scene.mp4"),
+            "endgame_scene.mkv",
+            "endgame_scene.mp4",
+        ]
+        self.endgame_video_audio_candidates = [
+            os.path.join("assets", "audio", "endgame_scene.wav"),
+            os.path.join("assets", "audio", "endgame_scene.mp3"),
+            os.path.join("assets", "audio", "endgame_scene.ogg"),
+            "endgame_scene.wav",
+            "endgame_scene.mp3",
+            "endgame_scene.ogg",
+        ]
+        self.endgame_video_path = None
+        self.endgame_video_cap = None
+        self.endgame_video_audio_started = False
+        self.endgame_video_started_at = 0
+        self.endgame_video_last_frame_at = 0
+        self.endgame_video_frame_delay_ms = 33
+        self.credits_video_candidates = [
+            os.path.join("assets", "video", "credits.mkv"),
+            os.path.join("assets", "video", "credits.mp4"),
+            "credits.mkv",
+            "credits.mp4",
+        ]
+        self.credits_video_audio_candidates = [
+            os.path.join("assets", "audio", "credits.wav"),
+            os.path.join("assets", "audio", "credits.mp3"),
+            os.path.join("assets", "audio", "credits.ogg"),
+            "credits.wav",
+            "credits.mp3",
+            "credits.ogg",
+        ]
+        self.credits_video_path = None
+        self.credits_video_cap = None
+        self.credits_video_audio_started = False
+        self.credits_video_started_at = 0
+        self.credits_video_last_frame_at = 0
+        self.credits_video_frame_delay_ms = 33
+        self.menu_video_candidates = [
+            os.path.join("assets", "video", "menu.mkv"),
+            os.path.join("assets", "video", "menu.mp4"),
+            "menu.mkv",
+            "menu.mp4",
+        ]
+        self.menu_video_path = None
+        self.menu_video_cap = None
+        self.menu_video_last_surface = None
+        self.menu_video_last_frame_at = 0
+        self.menu_video_frame_delay_ms = 33
         self._admin_pause_active = False
         self._admin_pause_started_at = 0
 
         self._load_progress()
+        self._load_menu_video()
 
     def _apply_display_mode(self):
         flags = pygame.FULLSCREEN if self.is_fullscreen else 0
