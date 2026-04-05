@@ -22,7 +22,7 @@ class VideoCamere:
         panel_w = min(1420, max(1080, int(self.width * 0.72)))
         panel_h = min(820, max(680, int(self.height * 0.78)))
         panel_x = max(0, self.width - panel_w)
-        panel_y = max(36, (self.height - panel_h) // 2 - 8)
+        panel_y = max(56, (self.height - panel_h) // 2 + 8)
         self.panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
         self.is_open = False
         self.is_trigger_hovered = False
@@ -804,7 +804,7 @@ class VideoCamere:
         # Priority: remove direct graph edges first, then optional camera->closure links.
         line_hit = self._hit_test_connection_line(point)
         if line_hit is not None:
-            map_kind, edge_id = line_hit
+            map_kind, edge_id, _segment_idx = line_hit
             src, dst = edge_id.split("->", 1)
             graph = self._camera_connections if map_kind == "main" else self._vent_connections
             linked = graph.get(src, [])

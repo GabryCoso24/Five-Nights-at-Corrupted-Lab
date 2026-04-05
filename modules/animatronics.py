@@ -142,8 +142,7 @@ class Animatronic:
 			steps_to_take = 1
 			if rng.random() < extra_step_chance:
 				steps_to_take += 1
-			if rng.random() < (extra_step_chance * 0.45):
-				steps_to_take += 1
+			steps_to_take = min(2, steps_to_take)
 
 			# Near the office door, force single-step movement to avoid unfair "teleport" pressure.
 			remaining_to_door = max(0, (len(self.route) - 1) - self.route_index)
@@ -224,17 +223,75 @@ class AnimatronicsManager:
 				side = "right" if side == "left" else "left"
 			self.route_side_by_name[name] = side
 			if self.navigation_graph:
-				route = self._build_route_with_choices(start_node="cam10", side=side)
+				start_node = "cam9"
+				if self.animatronics[name].can_trigger_error:
+					start_node = self._pick_random_spawn_node(side)
+				route = self._build_route_with_choices(start_node=start_node, side=side)
 			else:
 				route = self.routes_by_side[side]
 			self.animatronics[name].set_route(route)
+
+	def _pick_random_spawn_node(self, side: str) -> str:
+		primary_targets = {"cam1", "office_left"} if side == "left" else {"cam14", "office_right"}
+		dist_map = self._reverse_distances(primary_targets)
+		if not dist_map:
+			fallback_nodes = [node for node in self.navigation_graph.keys() if node.startswith("cam") and node != "cam10"]
+			return self.rng.choice(fallback_nodes) if fallback_nodes else "cam10"
+
+		candidates = []
+		for node, dist in dist_map.items():
+			if not node.startswith("cam"):
+				continue
+			if node == "cam10":
+				continue
+			if dist <= 0:
+				continue
+			candidates.append((node, dist))
+
+		if not candidates:
+			fallback_nodes = [node for node in self.navigation_graph.keys() if node.startswith("cam") and node != "cam10"]
+			return self.rng.choice(fallback_nodes) if fallback_nodes else "cam10"
+
+		# Prefer a wider spread of starting positions so error animatronics do not appear too close to the office.
+		far_candidates = [item for item in candidates if item[1] >= 3]
+		pool = far_candidates if far_candidates else candidates
+		weights = [min(6.0, 1.0 + (dist * 0.35)) for _, dist in pool]
+		chosen = self.rng.choices(pool, weights=weights, k=1)[0][0]
+		return chosen
+
+	def _camera_number(self, node_id: str) -> Optional[int]:
+		if not isinstance(node_id, str) or not node_id.startswith("cam"):
+			return None
+		try:
+			return int(node_id.replace("cam", ""))
+		except ValueError:
+			return None
+
+	def _is_reasonable_camera_edge(self, src: str, dst: str) -> bool:
+		if not isinstance(src, str) or not isinstance(dst, str):
+			return False
+		if src.startswith("door") or dst.startswith("door") or src.startswith("office") or dst.startswith("office"):
+			return True
+
+		src_num = self._camera_number(src)
+		dst_num = self._camera_number(dst)
+		if src_num is None or dst_num is None:
+			return True
+		return abs(src_num - dst_num) <= 2
 
 	def set_navigation_graph(self, graph: Dict[str, List[str]]) -> None:
 		normalized = {}
 		for src, targets in (graph or {}).items():
 			if not isinstance(targets, list):
 				continue
-			normalized[str(src)] = [str(dst) for dst in targets if isinstance(dst, str)]
+			src_id = str(src)
+			filtered_targets = []
+			for dst in targets:
+				if not isinstance(dst, str):
+					continue
+				if self._is_reasonable_camera_edge(src_id, dst):
+					filtered_targets.append(dst)
+			normalized[src_id] = filtered_targets
 		self.navigation_graph = normalized
 
 	def _reverse_distances(self, target_nodes: Set[str]) -> Dict[str, int]:
@@ -330,6 +387,11 @@ class AnimatronicsManager:
 				path = self._find_shortest_path_with_blocks(start_node, alt_targets, blocked_nodes)
 
 		if not path:
+			fallback = list(self.routes_by_side.get(side, []))
+			if fallback:
+				if start_node in fallback:
+					return fallback[fallback.index(start_node):]
+				return [start_node] + fallback
 			door_side = side if side in ("left", "right") else "right"
 			return [start_node, f"door_{door_side}"]
 
@@ -482,7 +544,13 @@ class AnimatronicsManager:
 
 			side = self._route_side(animatronic)
 
-			if (not animatronic.can_trigger_error) and side in ("left", "right") and self._is_side_in_attack_cooldown(side, now_ms) and animatronic.is_near_office_door():
+			if (
+				(not animatronic.can_trigger_error)
+				and side in ("left", "right")
+				and self._is_side_in_attack_cooldown(side, now_ms)
+				and animatronic.is_near_office_door()
+				and (not animatronic.is_at_office_door())
+			):
 				animatronic.door_entered_at = 0
 				animatronic.watched_since_at = 0
 				if animatronic.route_index > 0:
@@ -565,14 +633,6 @@ class AnimatronicsManager:
 				watched_camera=watched_camera,
 				blocked_edges=blocked_edges,
 			):
-				events.append(
-					{
-						"type": "moved",
-						"name": animatronic.name,
-						"from": before,
-						"to": animatronic.current_camera,
-					}
-				)
 				if animatronic.current_camera in ("door_left", "door_right"):
 					if animatronic.current_camera in blocked_nodes:
 						animatronic.route_index = max(0, animatronic.route_index - 1)
@@ -582,12 +642,41 @@ class AnimatronicsManager:
 					blocked_nodes.add(animatronic.current_camera)
 					self._set_side_attack_cooldown(side, now_ms)
 
+				after = animatronic.current_camera
+				if after != before:
+					events.append(
+						{
+							"type": "moved",
+							"name": animatronic.name,
+							"from": before,
+							"to": after,
+						}
+					)
+
 			if animatronic.can_trigger_error:
 				is_watched = (
 					watched_camera is not None
 					and animatronic.is_visible_on_cameras()
 					and watched_camera == animatronic.current_camera
 				)
+
+				if animatronic.is_at_office_door() and is_watched and now_ms >= animatronic.next_error_at:
+					available_error_types = [e for e in ("camera", "ventilation", "flashlight") if e not in active_error_set]
+					if available_error_types:
+						# At the office door, error-type animatronics must create concrete pressure.
+						count = 2 if (len(available_error_types) >= 2 and self.rng.random() < 0.28) else 1
+						count = min(count, len(available_error_types))
+						triggered_errors = self.rng.sample(available_error_types, k=count)
+						animatronic.stun(now_ms)
+						animatronic.door_entered_at = 0
+						animatronic.watched_since_at = 0
+						animatronic.route_index = max(0, animatronic.route_index - 1)
+						animatronic.next_move_at = max(animatronic.next_move_at, now_ms + 1200)
+						animatronic.next_error_at = now_ms + 4200
+						active_error_set.update(triggered_errors)
+						events.append({"type": "system_error", "name": animatronic.name, "errors": triggered_errors})
+						continue
+
 				if is_watched:
 					if animatronic.watched_since_at <= 0:
 						animatronic.watched_since_at = now_ms
@@ -596,9 +685,9 @@ class AnimatronicsManager:
 
 				if (
 					animatronic.watched_since_at > 0
-					and (now_ms - animatronic.watched_since_at) >= 1000
+					and (now_ms - animatronic.watched_since_at) >= 900
 					and now_ms >= animatronic.next_error_at
-					and self.rng.random() < max(0.08, animatronic.error_trigger_chance * 0.45)
+					and self.rng.random() < min(0.78, 0.30 + animatronic.error_trigger_chance)
 				):
 					available_error_types = [e for e in ("camera", "ventilation", "flashlight") if e not in active_error_set]
 					if not available_error_types:
