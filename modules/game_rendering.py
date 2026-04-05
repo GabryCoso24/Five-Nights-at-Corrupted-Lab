@@ -197,7 +197,11 @@ class GameRenderingMixin:
         footer = self.font_hour.render(footer_text, True, (173, 227, 113))
         self.screen.blit(footer, footer.get_rect(center=(panel.centerx, panel.bottom - 66)))
         skip_tutorial = self.font_small.render("Premi E per skippare il tutorial", True, (182, 220, 138))
-        self.screen.blit(skip_tutorial, skip_tutorial.get_rect(center=(panel.centerx, panel.bottom - 30)))
+        skip_tutorial = pygame.transform.smoothscale(
+            skip_tutorial,
+            (max(1, int(skip_tutorial.get_width() * 0.82)), max(1, int(skip_tutorial.get_height() * 0.82))),
+        )
+        self.screen.blit(skip_tutorial, skip_tutorial.get_rect(center=(panel.centerx, panel.bottom - 14)))
 
     def draw_night_outro(self):
         elapsed = pygame.time.get_ticks() - self.outro_start_time

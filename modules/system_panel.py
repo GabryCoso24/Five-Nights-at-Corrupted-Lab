@@ -89,7 +89,7 @@ class SystemPanel:
 
         if self.trigger_visible and self.trigger_interactable and self.trigger_rect.collidepoint(event.pos):
             if lock_open and self.is_open:
-                return True, "reboot_lock_close_attempt"
+                return True, "reboot_reset_close"
             self.is_open = not self.is_open
             return True, None
 
@@ -99,12 +99,12 @@ class SystemPanel:
         for action, rect in self._button_rects.items():
             if rect.collidepoint(event.pos):
                 if action == "exit" and lock_open:
-                    return True, "reboot_lock_close_attempt"
+                    return True, "reboot_reset_close"
                 return True, action
 
         if not self.panel_rect.collidepoint(event.pos):
             if lock_open:
-                return True, "reboot_lock_close_attempt"
+                return True, "reboot_reset_close"
             self.is_open = False
             return True, None
 

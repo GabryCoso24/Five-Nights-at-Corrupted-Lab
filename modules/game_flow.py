@@ -105,6 +105,20 @@ class GameFlowMixin:
             if now_ms < int(until or 0):
                 self.system_reboots[error_type] = now_ms + duration
 
+    def _cancel_active_reboots(self, now_ms=None):
+        now_ms = pygame.time.get_ticks() if now_ms is None else now_ms
+        had_active = False
+        for error_type, until in list(self.system_reboots.items()):
+            if now_ms < int(until or 0):
+                self.system_reboots[error_type] = 0
+                # Keep the subsystem in error state: user must start reboot again from scratch.
+                self.system_errors[error_type] = True
+                had_active = True
+
+        if had_active:
+            self.audio.stop_loop_sound(getattr(self, "system_reboot_sound", "assets/audio/reboot.wav"))
+            self._update_error_loop_sound()
+
     def _update_reboots(self, now_ms=None):
         now_ms = pygame.time.get_ticks() if now_ms is None else now_ms
         for error_type, until in list(self.system_reboots.items()):
@@ -186,6 +200,9 @@ class GameFlowMixin:
         elif action == "reboot_lock_close_attempt":
             self._restart_active_reboots(now_ms)
             self.system_panel.is_open = True
+        elif action == "reboot_reset_close":
+            self._cancel_active_reboots(now_ms)
+            self.system_panel.is_open = False
         elif action == "exit":
             self.system_panel.is_open = False
 

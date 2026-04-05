@@ -277,6 +277,10 @@ class AnimatronicsManager:
 		dst_num = self._camera_number(dst)
 		if src_num is None or dst_num is None:
 			return True
+
+		# Keep cross-map transitions (main <-> vents) so vent routes remain playable.
+		if (src_num <= 10 < dst_num) or (dst_num <= 10 < src_num):
+			return True
 		return abs(src_num - dst_num) <= 2
 
 	def set_navigation_graph(self, graph: Dict[str, List[str]]) -> None:
@@ -484,6 +488,36 @@ class AnimatronicsManager:
 
 	def _is_side_in_attack_cooldown(self, side: str, now_ms: int) -> bool:
 		return now_ms < int(self.side_attack_cooldown_until.get(side, 0) or 0)
+
+	def _force_flashlight_retreat_route(self, animatronic: Animatronic, side: str, now_ms: int) -> None:
+		if not self.navigation_graph:
+			return
+
+		if side == "left":
+			candidates = ["cam7", "cam6", "cam5", "cam2", "cam9"]
+		else:
+			candidates = ["cam12", "cam8", "cam5", "cam15", "cam10"]
+
+		start_node = None
+		for node in candidates:
+			if node in self.navigation_graph:
+				start_node = node
+				break
+		if start_node is None:
+			start_node = animatronic.current_camera
+
+		new_route = self._build_route_with_choices(start_node=start_node, side=side)
+		if not new_route:
+			return
+
+		old_stun = animatronic.stunned_until
+		old_next = animatronic.next_move_at
+		animatronic.set_route(new_route)
+		animatronic.route_index = 0
+		animatronic.door_entered_at = 0
+		animatronic.watched_since_at = 0
+		animatronic.stunned_until = max(old_stun, now_ms + 1400)
+		animatronic.next_move_at = max(old_next, now_ms + 1700)
 
 	def update(
 		self,
@@ -736,6 +770,7 @@ class AnimatronicsManager:
 				stunned.append(animatronic.name)
 				if not animatronic.can_trigger_error:
 					side = self._route_side(animatronic)
+					self._force_flashlight_retreat_route(animatronic, side, now_ms)
 					self._set_side_attack_cooldown(side, now_ms, extra_ms=600)
 		return stunned
 
