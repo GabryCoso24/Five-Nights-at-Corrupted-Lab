@@ -1,5 +1,8 @@
 import pygame
 
+from modules.menu_settings_handlers import handle_menu_events as handle_menu_events_module
+from modules.menu_settings_handlers import handle_settings_events as handle_settings_events_module
+
 
 class GameEventHandlersMixin:
     def handle_event(self, event):
@@ -13,19 +16,21 @@ class GameEventHandlersMixin:
 
         if self.state == "menu":
             self.handle_menu_events(event)
+        elif self.state == "settings":
+            self.handle_settings_events(event)
         elif self.state == "night_intro":
             if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_SPACE):
                 self.start_gameplay()
         elif self.state == "night_tutorial":
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_e:
-                    self._begin_gameplay_session()
+                    self.start_gameplay()
                 elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
                     current_page = int(getattr(self, "tutorial_page", 0) or 0)
                     if current_page < 1:
                         self.tutorial_page = current_page + 1
                     else:
-                        self._begin_gameplay_session()
+                        self.start_gameplay()
         elif self.state == "night_outro":
             if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_SPACE):
                 self.enter_menu(play_click=True)
@@ -57,26 +62,10 @@ class GameEventHandlersMixin:
             self.handle_game_events(event)
 
     def handle_menu_events(self, event):
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_RETURN:
-                if self.can_continue:
-                    self.continue_game()
-                else:
-                    self.start_new_game()
-            elif event.key == pygame.K_ESCAPE:
-                pygame.event.post(pygame.event.Event(pygame.QUIT))
+        handle_menu_events_module(self, event)
 
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.new_game_button.collidepoint(event.pos):
-                self.start_new_game()
-            elif self.can_continue and self.continue_button.collidepoint(event.pos):
-                self.continue_game()
-            elif self.credits_button.collidepoint(event.pos):
-                self.audio.play_sound(self.button_sound, volume=0.8)
-                self._start_credits_video()
-            elif self.exit_button.collidepoint(event.pos):
-                self.audio.play_sound(self.button_sound, volume=0.8)
-                pygame.event.post(pygame.event.Event(pygame.QUIT))
+    def handle_settings_events(self, event):
+        handle_settings_events_module(self, event)
 
     def handle_game_events(self, event):
         handled, action = self.system_panel.handle_event(event, lock_open=self._is_any_rebooting())

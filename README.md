@@ -1,20 +1,26 @@
-# Gioco Scuola
+# Gioco Scuola / School Game
 
-Gioco horror in stile survival-notturno realizzato con Pygame.
+## Italiano
 
-Scopo: sopravvivere fino alle 6:00 monitorando telecamere, condotti, errori di sistema e gestione torcia.
+### Descrizione
 
-## Requisiti
+Gioco horror survival-notturno realizzato con Pygame.
+
+Il progetto nasce come parodia del gioco "Five Nights at Freddy's 3": prende ispirazione da alcune atmosfere e meccaniche di tensione, ma le reinterpreta con ambientazione scolastica, tono ironico e identita propria.
+
+Obiettivo: sopravvivere fino alle 6:00 monitorando telecamere, condotti, errori di sistema e gestione torcia.
+
+### Requisiti
 
 - Python 3.10+ (consigliato 3.11)
-- Windows (supportato), con supporto audio attivo
+- Windows (supportato) con audio attivo
 
-Dipendenze Python principali:
+Dipendenze principali:
 
 - `pygame`
 - `opencv-python`
 
-## Installazione
+### Installazione
 
 ```bash
 python -m venv .venv
@@ -22,70 +28,146 @@ python -m venv .venv
 pip install pygame opencv-python
 ```
 
-## Avvio del gioco
+### Avvio
 
 ```bash
 python main.py
 ```
 
-## Controlli principali
+### Controlli
 
-- `ENTER`: conferma nel menu / avanza schermate intro
+- `ENTER`: conferma menu / avanza schermate intro
 - `SPACE`: torcia in ufficio
-- `E`: skip video finali
-- `M`: ritorna al menu durante la partita
-- `ESC`: chiudi il gioco
-- `F11` oppure `ALT+ENTER`: fullscreen on/off
+- `E`: saltare video finali
+- `M`: torna al menu durante la partita
+- `ESC`: chiude il gioco
+- `F11` o `ALT+ENTER`: fullscreen on/off
 
-Controlli monitor CAM:
+Monitor CAM:
 
-- Click trigger `CAM` a destra: apri/chiudi monitor
-- `TAB` nel monitor: switch mappa principale / condotti
+- Click sul trigger `CAM` a destra: apre/chiude monitor
+- `TAB` nel monitor: cambia mappa principale/condotti
 - In mappa condotti: doppio click su una tratta per chiuderla/aprirla
 
-## Flusso di gioco
+### Impostazioni disponibili
 
-1. Menu principale con video background
+- Modalita schermo: windowed / borderless / fullscreen
+- Risoluzione finestra
+- Dimensione cursore: 32 / 48 / 64
+- Lingua: Italiano / English
+- Salvataggio automatico in `settings.json`
+
+### Flusso di gioco
+
+1. Menu principale
 2. Intro notte
-3. (Solo Notte 1) Tutorial iniziale con istruzioni rapide
+3. (Solo notte 1) tutorial
 4. Gameplay
 5. Fine notte:
-	- Notti 1-4: video vittoria
-	- Notte 5: sequenza `endgame` e poi `credits`
+   - Notti 1-4: video vittoria
+   - Notte 5: endgame e poi credits
 
-## Sistemi principali
+### Note asset
 
-- Animatronics con percorsi camera/condotti
-- Errori di sistema (camera, ventilazione, torcia)
-- Reboot moduli dal pannello sinistro
-- Torcia con durata/cooldown
-- Jumpscare con video/audio
+- `assets/audio/`: suoni e musica
+- `assets/images/`: sfondi, sprite, mappe e cursori
+- `assets/video/`: video menu, vittoria, sconfitta, endgame, credits
 
-## Asset
-
-Struttura importante:
-
-- `assets/audio/` suoni e musica
-- `assets/images/` sfondi, sprite e mappe camere
-- `assets/video/` video menu, victory/defeat, endgame e credits
-
-Note video:
-
-- Il progetto usa OpenCV per i video.
-- Se un formato non viene decodificato bene, preferire `.mp4`.
-
-## Build EXE (Windows)
-
-Per creare un eseguibile:
+### Build EXE (Windows) - IT
 
 ```bash
 python build_exe.py
 ```
 
-Lo script usa PyInstaller e include la cartella `assets/` nel bundle.
+### Troubleshooting rapido
 
-## Risoluzione problemi rapida
+- Video menu lento: preferire file `.mp4`
+- Audio assente: verificare output Windows e file audio
+- CAM nera: controllare immagini in `assets/images/cams/`
 
-- Video menu lento: verificare codec del file video (`.mp4` consigliato)
-- Audio assente: controllare output audio di Windows e file in `assets/audio/`
-- Schermata nera CAM: verificare presenza immagini in `assets/images/cams/`
+---
+
+## English
+
+### Description
+
+Night-survival horror game built with Pygame.
+
+This project was born as a parody of "Five Nights at Freddy's 3": it takes inspiration from part of its atmosphere and tension mechanics, then reinterprets them with a school setting, an ironic tone, and its own identity.
+
+Goal: survive until 6:00 AM by managing cameras, vents, system errors, and flashlight timing.
+
+### Requirements
+
+- Python 3.10+ (3.11 recommended)
+- Windows with active audio support
+
+Main dependencies:
+
+- `pygame`
+- `opencv-python`
+
+### Installation
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install pygame opencv-python
+```
+
+### Run
+
+```bash
+python main.py
+```
+
+### Controls
+
+- `ENTER`: confirm menu / advance intro screens
+- `SPACE`: flashlight in office
+- `E`: skip ending videos
+- `M`: return to menu during gameplay
+- `ESC`: quit game
+- `F11` or `ALT+ENTER`: fullscreen on/off
+
+CAM monitor:
+
+- Click the `CAM` trigger on the right: open/close monitor
+- `TAB` in monitor: switch main/vent map
+- In vent map: double click a segment to toggle close/open
+
+### Available settings
+
+- Display mode: windowed / borderless / fullscreen
+- Window resolution
+- Cursor size: 32 / 48 / 64
+- Language: Italiano / English
+- Auto-saved in `settings.json`
+
+### Game flow
+
+1. Main menu
+2. Night intro
+3. (Night 1 only) tutorial
+4. Gameplay
+5. Night ending:
+   - Nights 1-4: victory video
+   - Night 5: endgame, then credits
+
+### Asset notes
+
+- `assets/audio/`: sounds and music
+- `assets/images/`: backgrounds, sprites, maps, cursors
+- `assets/video/`: menu, victory, defeat, endgame, credits videos
+
+### Build EXE (Windows) - EN
+
+```bash
+python build_exe.py
+```
+
+### Quick troubleshooting
+
+- Slow menu video: prefer `.mp4` assets
+- No audio: check Windows output and audio files
+- Black CAM screen: verify files in `assets/images/cams/`

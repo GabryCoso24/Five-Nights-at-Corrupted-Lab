@@ -314,6 +314,7 @@ class GameFlowMixin:
                     self.handle_event(event)
 
                 self.update_and_draw()
+                self.draw_custom_cursor()
                 pygame.display.flip()
                 self.clock.tick(60)
                 self.error_message = None
@@ -327,6 +328,10 @@ class GameFlowMixin:
     def update_and_draw(self):
         if self.state == "menu":
             self.draw_menu()
+        elif self.state == "settings":
+            self.draw_settings()
+        elif self.state == "loading":
+            self.draw_loading_screen()
         elif self.state == "night_intro":
             self.draw_night_intro()
         elif self.state == "night_tutorial":
@@ -349,21 +354,37 @@ class GameFlowMixin:
     def _enter_night_intro(self):
         self.audio.play_sound(self.button_sound, volume=0.8)
         self.audio.stop_music(fade_ms=self.music_fade_ms)
+        self.audio.play_sound(getattr(self, "night_start_sound", "assets/audio/night_start.wav"), volume=0.95)
         self.intro_start_time = pygame.time.get_ticks()
         self.state = "night_intro"
+
+    def _start_loading_screen(self, next_action, message=None, duration_ms=1000):
+        self.loading_message = str(message or self.tr("loading.default"))
+        self.loading_started_at = pygame.time.get_ticks()
+        self.loading_duration_ms = max(200, int(duration_ms))
+        self.loading_next_action = next_action
+        self.state = "loading"
 
     def start_new_game(self):
         self.current_night = 1
         self.last_completed_night = 0
         self.first_night_tutorial_seen = False
         self.save_progress(next_night=self.current_night)
-        self._enter_night_intro()
+        self._start_loading_screen(
+            next_action=self._enter_night_intro,
+            message=self.tr("loading.night", night=self.current_night),
+            duration_ms=900,
+        )
 
     def continue_game(self):
         self._load_progress()
         if not self.can_continue:
             return
-        self._enter_night_intro()
+        self._start_loading_screen(
+            next_action=self._enter_night_intro,
+            message=self.tr("loading.resume", night=self.current_night),
+            duration_ms=900,
+        )
 
     def enter_game(self):
         # Backward-compatible alias.
@@ -379,7 +400,11 @@ class GameFlowMixin:
         if self.current_night == 1 and not bool(getattr(self, "first_night_tutorial_seen", False)):
             self._enter_first_night_tutorial()
             return
-        self._begin_gameplay_session()
+        self._start_loading_screen(
+            next_action=self._begin_gameplay_session,
+            message=self.tr("loading.prepare"),
+            duration_ms=850,
+        )
 
     def _begin_gameplay_session(self):
         self._stop_jumpscare_media()

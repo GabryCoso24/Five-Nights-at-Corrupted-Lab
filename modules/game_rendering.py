@@ -1,11 +1,50 @@
+import os
 import random
 
 import pygame
 
+from modules.credits_screen import draw_credits_video as draw_credits_video_screen
+from modules.loading_screen import draw_loading_screen as draw_loading_screen_module
+from modules.menu_screen import draw_menu as draw_menu_screen
+from modules.settings_screen import draw_settings as draw_settings_screen
 from modules.ui_manager import add_graphic_element, draw_graphic_elements
 
 
 class GameRenderingMixin:
+    def _load_custom_cursor(self, cursor_path=None, hotspot=None):
+        path = cursor_path if cursor_path is not None else getattr(self, "custom_cursor_path", None)
+        self.custom_cursor_surface = None
+        self.custom_cursor_hotspot = tuple(hotspot or getattr(self, "custom_cursor_hotspot", (0, 0)))
+
+        if not path or not os.path.isfile(path):
+            self._sync_custom_cursor_visibility()
+            return False
+
+        try:
+            self.custom_cursor_surface = pygame.image.load(path).convert_alpha()
+        except Exception:
+            self.custom_cursor_surface = None
+            self._sync_custom_cursor_visibility()
+            return False
+
+        self._sync_custom_cursor_visibility()
+        return True
+
+    def _sync_custom_cursor_visibility(self):
+        try:
+            pygame.mouse.set_visible(getattr(self, "custom_cursor_surface", None) is None)
+        except Exception:
+            pass
+
+    def draw_custom_cursor(self):
+        cursor = getattr(self, "custom_cursor_surface", None)
+        if cursor is None:
+            return
+
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+        hotspot_x, hotspot_y = getattr(self, "custom_cursor_hotspot", (0, 0))
+        self.screen.blit(cursor, (mouse_x - int(hotspot_x), mouse_y - int(hotspot_y)))
+
     @staticmethod
     def _get_video_fps(capture, default_fps=30.0):
         if capture is None:
@@ -97,60 +136,13 @@ class GameRenderingMixin:
         self.screen.blit(red_flash, (0, 0))
 
     def draw_menu(self):
-        now_ms = pygame.time.get_ticks()
-        self.screen.blit(self.menu_background, (0, 0))
+        draw_menu_screen(self)
 
-        # Draw menu video background if available, but always continue drawing menu UI.
-        if self.menu_video_cap is not None and now_ms - self.menu_video_last_frame_at >= self.menu_video_frame_delay_ms:
-            ok, frame = self.menu_video_cap.read()
-            self.menu_video_last_frame_at = now_ms
+    def draw_settings(self):
+        draw_settings_screen(self)
 
-            if not ok:
-                # OpenCV property id 1 == CAP_PROP_POS_FRAMES
-                self.menu_video_cap.set(1, 0)
-                ok, frame = self.menu_video_cap.read()
-
-            if ok and frame is not None:
-                frame_rgb = frame[:, :, ::-1]
-                frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
-                # Use fast scale instead of smoothscale to avoid performance issues
-                self.menu_video_last_surface = pygame.transform.scale(frame_surface, (self.width, self.height))
-
-        last_surface = getattr(self, "menu_video_last_surface", None)
-        if last_surface is not None:
-            self.screen.blit(last_surface, (0, 0))
-
-        dim = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        dim.fill((6, 11, 6, 122))
-        self.screen.blit(dim, (0, 0))
-
-        accent = pygame.Surface((6, int(self.height * 0.82)), pygame.SRCALPHA)
-        accent.fill((110, 166, 52, 190))
-        self.screen.blit(accent, (int(self.width * 0.066), int(self.height * 0.08)))
-
-        title_jitter_x = random.randint(-2, 2)
-        title_jitter_y = random.randint(-1, 1)
-        title = self.font_title.render("Five Nights at The Corrupted Lab", True, (199, 231, 120))
-        title_shadow = self.font_title.render("Five Nights at The Corrupted Lab", True, (7, 14, 7))
-        title_left_x = int(self.width * 0.08) + title_jitter_x
-        title_y = int(self.height * 0.09) + title_jitter_y
-        title_rect = title.get_rect(topleft=(title_left_x, title_y))
-        self.screen.blit(title_shadow, title_rect.move(4, 4))
-        self.screen.blit(title, title_rect)
-
-        self.queue_button(self.new_game_button, "New Game")
-        if self.can_continue:
-            self.queue_button(self.continue_button, "Continua")
-        self.queue_button(self.credits_button, "Credits")
-        self.queue_button(self.exit_button, "Exit")
-        draw_graphic_elements(self.screen)
-
-        self.draw_glitch_overlay(self.screen)
-
-        if self.error_message:
-            err_label = self.font_small.render(self.error_message, True, (255, 60, 60))
-            err_rect = err_label.get_rect(center=(self.width // 2, self.height - 60))
-            self.screen.blit(err_label, err_rect)
+    def draw_loading_screen(self):
+        draw_loading_screen_module(self)
 
     def queue_button(self, rect, text):
         hovered = rect.collidepoint(pygame.mouse.get_pos())
@@ -209,8 +201,8 @@ class GameRenderingMixin:
             self.start_gameplay()
 
         self.screen.fill((0, 0, 0))
-        title = self.font_night.render(f"Notte {self.current_night}", True, (235, 235, 235))
-        hour = self.font_hour.render("Ore 12:00", True, (235, 235, 235))
+        title = self.font_night.render(self.tr("ui.night", night=self.current_night), True, (235, 235, 235))
+        hour = self.font_hour.render(self.tr("ui.hour_start"), True, (235, 235, 235))
         self.screen.blit(title, title.get_rect(center=(self.width // 2, self.height // 2 - 40)))
         self.screen.blit(hour, hour.get_rect(center=(self.width // 2, self.height // 2 + 38)))
 
@@ -230,29 +222,51 @@ class GameRenderingMixin:
         pygame.draw.rect(self.screen, (12, 20, 12), panel, border_radius=14)
         pygame.draw.rect(self.screen, (137, 198, 84), panel, width=3, border_radius=14)
 
-        title = self.font_night.render(f"Tutorial - Notte 1 ({current_page + 1}/2)", True, (216, 241, 174))
+        title = self.font_night.render(f"Tutorial - {self.tr('ui.night', night=1)} ({current_page + 1}/2)", True, (216, 241, 174))
         self.screen.blit(title, title.get_rect(center=(panel.centerx, panel.top + 62)))
 
         if current_page == 0:
-            lines = [
-                "Obiettivo: sopravvivi fino alle 6 AM.",
-                "CAM: usa il trigger a destra per aprire il sistema telecamere.",
-                "Condotti: nelle CAM vent, doppio click su una tratta per chiuderla.",
-                "Torcia: premi SPACE quando sei in ufficio (non nelle CAM/pannello).",
-                "Errori di sistema: apri il pannello a sinistra e riavvia i moduli.",
-                "Se un nemico arriva alla porta, reagisci subito o perderai.",
-            ]
-            footer_text = "Premi INVIO o SPAZIO per continuare"
+            if self.language == "it":
+                lines = [
+                    "Obiettivo: sopravvivi fino alle 6 AM.",
+                    "CAM: usa il trigger a destra per aprire il sistema telecamere.",
+                    "Condotti: nelle CAM vent, doppio click su una tratta per chiuderla.",
+                    "Torcia: premi SPACE quando sei in ufficio (non nelle CAM/pannello).",
+                    "Errori di sistema: apri il pannello a sinistra e riavvia i moduli.",
+                    "Se un nemico arriva alla porta, reagisci subito o perderai.",
+                ]
+                footer_text = "Premi INVIO o SPAZIO per continuare"
+            else:
+                lines = [
+                    "Goal: survive until 6 AM.",
+                    "CAM: use the trigger on the right to open the camera system.",
+                    "Vents: in vent CAM map, double click a section to close it.",
+                    "Flashlight: press SPACE in the office (not in CAM/panel).",
+                    "System errors: open the left panel and reboot modules.",
+                    "If an enemy reaches the door, react quickly or you lose.",
+                ]
+                footer_text = "Press ENTER or SPACE to continue"
         else:
-            lines = [
-                "Esistono animatronics letali e animatronics che causano errori.",
-                "Letali: se arrivano alla porta e non li gestisci in tempo, perdi.",
-                "Contromossa: osserva le CAM spesso e usa la torcia al momento giusto.",
-                "Tipo errore: aumentano la pressione attivando malfunzionamenti.",
-                "Contromossa: apri subito il pannello e riavvia i moduli in errore.",
-                "Regola d'oro: alterna controllo CAM e pannello, senza tunnel vision.",
-            ]
-            footer_text = "Premi INVIO o SPAZIO per iniziare"
+            if self.language == "it":
+                lines = [
+                    "Esistono animatronics letali e animatronics che causano errori.",
+                    "Letali: se arrivano alla porta e non li gestisci in tempo, perdi.",
+                    "Contromossa: osserva le CAM spesso e usa la torcia al momento giusto.",
+                    "Tipo errore: aumentano la pressione attivando malfunzionamenti.",
+                    "Contromossa: apri subito il pannello e riavvia i moduli in errore.",
+                    "Regola d'oro: alterna controllo CAM e pannello, senza tunnel vision.",
+                ]
+                footer_text = "Premi INVIO o SPAZIO per iniziare"
+            else:
+                lines = [
+                    "There are lethal animatronics and error-causing animatronics.",
+                    "Lethal: if they reach the door and you fail to react, you lose.",
+                    "Counter: check CAM often and use the flashlight at the right time.",
+                    "Error type: they increase pressure by triggering malfunctions.",
+                    "Counter: open the panel quickly and reboot broken modules.",
+                    "Golden rule: alternate CAM checks and panel checks, no tunnel vision.",
+                ]
+                footer_text = "Press ENTER or SPACE to start"
 
         y = panel.top + 140
         for text in lines:
@@ -262,7 +276,7 @@ class GameRenderingMixin:
 
         footer = self.font_hour.render(footer_text, True, (173, 227, 113))
         self.screen.blit(footer, footer.get_rect(center=(panel.centerx, panel.bottom - 66)))
-        skip_tutorial = self.font_small.render("Premi E per skippare il tutorial", True, (182, 220, 138))
+        skip_tutorial = self.font_small.render(self.tr("tutorial.skip"), True, (182, 220, 138))
         skip_tutorial = pygame.transform.smoothscale(
             skip_tutorial,
             (max(1, int(skip_tutorial.get_width() * 0.82)), max(1, int(skip_tutorial.get_height() * 0.82))),
@@ -276,8 +290,8 @@ class GameRenderingMixin:
 
         self.screen.fill((0, 0, 0))
         completed_night = getattr(self, "last_completed_night", max(1, self.current_night - 1))
-        title = self.font_night.render(f"Notte {completed_night}", True, (235, 235, 235))
-        desc = self.font_night.render("SUPERATA!!", True, (235, 235, 235))
+        title = self.font_night.render(self.tr("ui.night", night=completed_night), True, (235, 235, 235))
+        desc = self.font_night.render(self.tr("ui.night_cleared"), True, (235, 235, 235))
         self.screen.blit(title, title.get_rect(center=(self.width // 2, self.height // 2 - 40)))
         self.screen.blit(desc, desc.get_rect(center=(self.width // 2, self.height // 2 + 38)))
 
@@ -442,21 +456,21 @@ class GameRenderingMixin:
 
         clock_text = self.font_hour.render(label, True, (235, 235, 235))
         self.screen.blit(clock_text, clock_text.get_rect(topright=(self.width - 30, 24)))
-        night_text = self.font_small.render(f"Notte {self.current_night}", True, (235, 235, 235))
+        night_text = self.font_small.render(self.tr("ui.night", night=self.current_night), True, (235, 235, 235))
         self.screen.blit(night_text, night_text.get_rect(topright=(self.width - 34, 94)))
 
         if self.system_errors.get("flashlight", False):
-            indicator_text = "Flashlight: ERROR"
+            indicator_text = self.tr("ui.flashlight_error")
             indicator_color = (255, 80, 80)
         elif self.flashlight_active:
-            indicator_text = "Flashlight: ATTIVA"
+            indicator_text = self.tr("ui.flashlight_active")
             indicator_color = (80, 255, 80)
         elif self.flashlight_ready:
-            indicator_text = "Flashlight: PRONTA"
+            indicator_text = self.tr("ui.flashlight_ready")
             indicator_color = (80, 80, 255)
         else:
             remaining_ms = max(0, self.flashlight_cooldown_until - now_ms)
-            indicator_text = f"Flashlight: COOLDOWN {remaining_ms / 1000:.1f}s"
+            indicator_text = self.tr("ui.flashlight_cooldown", seconds=(remaining_ms / 1000.0))
             indicator_color = (255, 80, 80)
 
         indicator_label = self.font_small.render(indicator_text, True, indicator_color)
@@ -572,7 +586,7 @@ class GameRenderingMixin:
             # Fallback: il file manca o OpenCV non e disponibile.
             self.screen.fill((0, 0, 0))
             self._draw_end_video_label("GAME OVER", (255, 90, 90))
-            info = self.font_small.render("Video non disponibile", True, (255, 120, 120))
+            info = self.font_small.render(self.tr("ui.video_unavailable"), True, (255, 120, 120))
             self.screen.blit(info, info.get_rect(center=(self.width // 2, self.height // 2)))
             if now_ms - self.defeat_video_started_at >= 1500:
                 self.enter_menu(play_click=False)
@@ -597,8 +611,8 @@ class GameRenderingMixin:
 
         if self.victory_video_cap is None:
             self.screen.fill((0, 0, 0))
-            self._draw_end_video_label("NOTTE SUPERATA", (120, 255, 150))
-            info = self.font_small.render("Video vittoria non disponibile", True, (120, 255, 120))
+            self._draw_end_video_label(self.tr("ui.victory"), (120, 255, 150))
+            info = self.font_small.render(self.tr("ui.victory_video_unavailable"), True, (120, 255, 120))
             self.screen.blit(info, info.get_rect(center=(self.width // 2, self.height // 2)))
             if now_ms - self.victory_video_started_at >= 1500:
                 self.enter_menu(play_click=False)
@@ -616,7 +630,7 @@ class GameRenderingMixin:
             return
 
         self.screen.blit(frame_surface, (0, 0))
-        self._draw_end_video_label("NOTTE SUPERATA", (120, 255, 150))
+        self._draw_end_video_label(self.tr("ui.victory"), (120, 255, 150))
 
     def draw_endgame_video(self):
         now_ms = pygame.time.get_ticks()
@@ -624,9 +638,9 @@ class GameRenderingMixin:
         if self.endgame_video_cap is None:
             self.screen.fill((0, 0, 0))
             self._draw_end_video_label("ENDGAME", (255, 220, 120))
-            info = self.font_small.render("Video endgame non disponibile", True, (255, 220, 120))
+            info = self.font_small.render(self.tr("ui.endgame_video_unavailable"), True, (255, 220, 120))
             self.screen.blit(info, info.get_rect(center=(self.width // 2, self.height // 2)))
-            skip_hint = self.font_small.render("Premi E per skippare", True, (245, 220, 170))
+            skip_hint = self.font_small.render(self.tr("ui.press_e_skip"), True, (245, 220, 170))
             self.screen.blit(skip_hint, skip_hint.get_rect(bottomright=(self.width - 26, self.height - 24)))
             if now_ms - self.endgame_video_started_at >= 1500:
                 self._start_credits_video()
@@ -645,125 +659,11 @@ class GameRenderingMixin:
 
         self.screen.blit(frame_surface, (0, 0))
         self._draw_end_video_label("ENDGAME", (255, 220, 120))
-        skip_hint = self.font_small.render("Premi E per skippare", True, (245, 220, 170))
+        skip_hint = self.font_small.render(self.tr("ui.press_e_skip"), True, (245, 220, 170))
         self.screen.blit(skip_hint, skip_hint.get_rect(bottomright=(self.width - 26, self.height - 24)))
 
     def draw_credits_video(self):
-        now_ms = pygame.time.get_ticks()
-
-        # Optional video background behind the rolling credits.
-        if self.credits_video_cap is not None:
-            frame_surface = self._read_synced_video_frame(
-                self.credits_video_cap,
-                self.credits_video_started_at,
-                now_ms,
-            )
-            self.credits_video_last_frame_at = now_ms
-            if frame_surface is not None:
-                self.screen.blit(frame_surface, (0, 0))
-            else:
-                self.credits_video_cap = None
-
-        if self.credits_video_cap is None:
-            self.screen.fill((0, 0, 0))
-
-        # Improve readability regardless of background.
-        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill((4, 8, 16, 168))
-        self.screen.blit(overlay, (0, 0))
-
-        script = list(getattr(self, "credits_roll_script", []) or [])
-        if not script:
-            script = [
-                {"type": "title", "text": "CREDITS"},
-                {"type": "subtitle", "text": "Grazie per aver giocato"},
-            ]
-
-        elapsed_ms = max(0, now_ms - int(getattr(self, "credits_video_started_at", now_ms)))
-        speed_px_s = max(20, int(getattr(self, "credits_roll_speed_px_s", 78)))
-        scroll_offset = (elapsed_ms / 1000.0) * speed_px_s
-
-        x_center = self.width // 2
-        y = self.height + 80 - scroll_offset
-        body_font = self.font_small
-
-        for block in script:
-            block_type = str(block.get("type", "name"))
-            text = str(block.get("text", ""))
-
-            if block_type == "space":
-                y += 36
-                continue
-
-            if block_type == "title":
-                surf = self.font_night.render(text, True, (214, 235, 255))
-                shadow = self.font_night.render(text, True, (8, 12, 18))
-                rect = surf.get_rect(center=(x_center, int(y)))
-                self.screen.blit(shadow, rect.move(2, 2))
-                self.screen.blit(surf, rect)
-                y += 98
-                continue
-
-            if block_type == "subtitle":
-                surf = self.font_hour.render(text, True, (176, 214, 255))
-                shadow = self.font_hour.render(text, True, (6, 10, 16))
-                rect = surf.get_rect(center=(x_center, int(y)))
-                self.screen.blit(shadow, rect.move(2, 2))
-                self.screen.blit(surf, rect)
-                y += 74
-                continue
-
-            if block_type == "header":
-                surf = body_font.render(text, True, (255, 214, 140))
-                shadow = body_font.render(text, True, (20, 16, 8))
-                rect = surf.get_rect(center=(x_center, int(y)))
-                self.screen.blit(shadow, rect.move(2, 2))
-                self.screen.blit(surf, rect)
-                y += 46
-                continue
-
-            name_surf = body_font.render(text, True, (232, 240, 248))
-            name_shadow = body_font.render(text, True, (10, 12, 16))
-            name_rect = name_surf.get_rect(center=(x_center, int(y)))
-            self.screen.blit(name_shadow, name_rect.move(2, 2))
-            self.screen.blit(name_surf, name_rect)
-            y += 36
-
-            detail = str(block.get("detail", "")).strip()
-            if detail:
-                words = detail.split()
-                line = []
-                max_width = int(self.width * 0.76)
-                lines = []
-                for word in words:
-                    candidate = " ".join(line + [word]).strip()
-                    if body_font.size(candidate)[0] <= max_width:
-                        line.append(word)
-                    else:
-                        if line:
-                            lines.append(" ".join(line))
-                        line = [word]
-                if line:
-                    lines.append(" ".join(line))
-
-                for txt in lines:
-                    line_surf = body_font.render(txt, True, (176, 194, 214))
-                    line_shadow = body_font.render(txt, True, (8, 10, 14))
-                    line_rect = line_surf.get_rect(center=(x_center, int(y)))
-                    self.screen.blit(line_shadow, line_rect.move(2, 2))
-                    self.screen.blit(line_surf, line_rect)
-                    y += 34
-                y += 16
-
-        total_height = y + scroll_offset - (self.height + 80)
-        finished_y = -max(180, int(getattr(self, "credits_roll_end_delay_ms", 1400) * speed_px_s / 1000.0))
-        if (self.height + 80 - scroll_offset + total_height) < finished_y:
-            self.enter_menu(play_click=False)
-            return
-
-        self._draw_end_video_label("CREDITS", (180, 220, 255))
-        skip_hint = self.font_small.render("Premi E per skippare", True, (180, 220, 255))
-        self.screen.blit(skip_hint, skip_hint.get_rect(bottomright=(self.width - 26, self.height - 24)))
+        draw_credits_video_screen(self)
 
     def _draw_door_threats(self, door_threats, cam_x, side="right"):
         # Anchor near the office side door in world space, then convert to screen space.
