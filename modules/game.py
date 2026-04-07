@@ -7,6 +7,8 @@ import pygame
 from modules.animatronics import build_default_manager
 from modules.camera import Camera
 from modules.cameras_system import VideoCamere
+from modules.credits_screen import build_credits_script as build_credits_script_module
+from modules.cursor_utils import get_cursor_path_for_size
 from modules.flashlight import Flashlight
 from modules.game_assets import load_enemy_sprites, load_jumpscare_assets
 from modules.game_event_handlers import GameEventHandlersMixin
@@ -217,7 +219,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.flashlight = Flashlight(self.width, self.height, radius=120, alpha=200)
         self.camera = Camera(self.width, self.game_background.get_width(), smoothing=0.13)
         self.audio = AudioManager()
-        self.custom_cursor_path = self._get_cursor_path_for_size(self.selected_cursor_size)
+        self.custom_cursor_path = get_cursor_path_for_size(self.selected_cursor_size)
         self.custom_cursor_hotspot = (0, 0)
         self.custom_cursor_surface = None
         if not self._load_custom_cursor():
@@ -242,7 +244,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.font_hour = pygame.font.SysFont(ui_font_name, 68, bold=True)
         self.font_small = pygame.font.SysFont(ui_font_name, 34)
 
-        self.credits_roll_script = self._build_credits_script(self.language)
+        self.credits_roll_script = build_credits_script_module(self.language)
 
         self.video_camere = VideoCamere(
             width=self.width,
@@ -440,7 +442,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.credits_audio_base_volume = 1.0
         self.credits_roll_speed_px_s = 46
         self.credits_roll_end_delay_ms = 3200
-        self.credits_roll_script = self._build_credits_script(self.language)
+        self.credits_roll_script = build_credits_script_module(self.language)
         self.menu_video_candidates = [
             os.path.join("assets", "video", "menu.mkv"),
             os.path.join("assets", "video", "menu.mp4"),
@@ -475,9 +477,6 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         os.makedirs(target_dir, exist_ok=True)
         return target_dir
 
-    def _get_cursor_path_for_size(self, size):
-        return os.path.join("assets", "images", f"cursor{int(size)}.png")
-
     def tr(self, key, **kwargs):
         lang = str(getattr(self, "language", "en") or "en").lower()
         pack = self.TRANSLATIONS.get(lang, self.TRANSLATIONS.get("en", {}))
@@ -487,148 +486,6 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
             return str(template).format(**kwargs)
         except Exception:
             return str(template)
-
-    def _build_credits_script(self, language):
-        if str(language).lower() == "it":
-            return [
-                {"type": "title", "text": "Five Nights at The Corrupted Lab"},
-                {"type": "subtitle", "text": "Titoli di coda"},
-                {"type": "space"},
-                {"type": "header", "text": "Origine del progetto"},
-                {
-                    "type": "name",
-                    "text": "Parodia dichiarata",
-                    "detail": "Il gioco nasce come parodia del gioco 'Five Nights at Freddy's 3'. L'obiettivo non è replicare l'opera originale, ma reinterpretarne alcune atmosfere con tono ironico, ambientazione scolastica e personaggi volutamente sopra le righe.",
-                },
-                {
-                    "type": "name",
-                    "text": "Identita propria",
-                    "detail": "Pur partendo da un riferimento noto, il progetto sviluppa una propria identita attraverso interfaccia, gestione errori di sistema, ritmo delle notti, assets selezionati dal team e una costruzione narrativa orientata alla parodia.",
-                },
-                {"type": "space"},
-                {"type": "header", "text": "Direzione creativa e visione del progetto"},
-                {
-                    "type": "name",
-                    "text": "Team Five Nights at Corrupted Lab",
-                    "detail": "Il progetto e nato con l'obiettivo di costruire un'esperienza horror scolastica leggibile, tesa e giocabile anche in sessioni brevi. Ogni scelta su ritmo, atmosfera e interfaccia e stata fatta per mantenere alta la pressione senza perdere chiarezza.",
-                },
-                {"type": "space"},
-                {"type": "header", "text": "Sviluppo codice e logica di gioco"},
-                {
-                    "type": "name",
-                    "text": "Gabriele Bella",
-                    "detail": "Ha definito l'architettura del codice separando rendering, flusso di gioco, input e sistemi. Ha implementato il loop principale, la progressione notturna, la gestione degli stati e la logica degli animatronics, bilanciando tempi di attacco, finestre di reazione e pressione crescente tra le notti.",
-                },
-                {
-                    "type": "name",
-                    "text": "Sistemi di gameplay",
-                    "detail": "Sotto la sua guida sono stati integrati torcia, pannello sistemi, gestione errori, trigger camera e sequenze di salto tra schermate, con particolare attenzione alla coerenza tra feedback audio-visivo e conseguenze di gioco.",
-                },
-                {"type": "space"},
-                {"type": "header", "text": "Selezione immagini e suoni"},
-                {
-                    "type": "name",
-                    "text": "Flavio Cosimo Cigna",
-                    "detail": "Ha curato ricerca, selezione e organizzazione del materiale visivo e sonoro. Ha contribuito a costruire un'identita riconoscibile scegliendo sprite, sfondi, effetti e musiche in modo coerente con il tono del gioco, mantenendo leggibilita nelle scene piu cariche.",
-                },
-                {
-                    "type": "name",
-                    "text": "Direzione audio-visiva",
-                    "detail": "Ha supportato la costruzione dell'atmosfera con una scelta mirata di transizioni, rumori ambientali e suoni di feedback, fondamentali per suggerire pericolo, movimento e urgenza senza interrompere il flusso del gameplay.",
-                },
-                {"type": "space"},
-                {"type": "header", "text": "Stesura credits finali"},
-                {
-                    "type": "name",
-                    "text": "Javeeria Amin",
-                    "detail": "Ha redatto, ordinato e armonizzato i testi dei crediti finali, valorizzando con chiarezza i ruoli del team e trasformando la chiusura del gioco in una parte narrativa coerente con il resto dell'esperienza.",
-                },
-                {
-                    "type": "name",
-                    "text": "Revisione e impaginazione",
-                    "detail": "Ha lavorato su tono, leggibilita e ritmo dei testi per rendere i crediti scorrevoli, comprensibili e rispettosi del contributo di ogni membro, mantenendo un linguaggio lineare e accessibile.",
-                },
-                {"type": "space"},
-                {"type": "header", "text": "Ringraziamenti"},
-                {
-                    "type": "name",
-                    "text": "A chi ha testato il progetto",
-                    "detail": "Un ringraziamento speciale a chi ha provato il gioco, segnalato problemi, dato suggerimenti e aiutato a rifinire difficolta, tempi e feedback. Ogni test ha contribuito a migliorare stabilita e qualita dell'esperienza finale.",
-                },
-                {"type": "space"},
-                {"type": "subtitle", "text": "Grazie per aver giocato"},
-                {"type": "subtitle", "text": "Ci vediamo alla prossima notte"},
-            ]
-
-        return [
-            {"type": "title", "text": "Five Nights at The Corrupted Lab"},
-            {"type": "subtitle", "text": "Credits"},
-            {"type": "space"},
-            {"type": "header", "text": "Project origin"},
-            {
-                "type": "name",
-                "text": "Declared parody",
-                "detail": "This game was born as a parody of 'Five Nights at Freddy's 3'. The intent is not to replicate the original work, but to reinterpret part of its atmosphere with an ironic tone, a school setting, and intentionally over-the-top characters.",
-            },
-            {
-                "type": "name",
-                "text": "Own identity",
-                "detail": "Even with a recognizable inspiration, the project builds its own identity through interface choices, system-error management, night pacing, team-curated assets, and a narrative style explicitly oriented toward parody.",
-            },
-            {"type": "space"},
-            {"type": "header", "text": "Creative direction and project vision"},
-            {
-                "type": "name",
-                "text": "Five Nights at Corrupted Lab Team",
-                "detail": "The project was designed to deliver a readable and tense school-horror experience, enjoyable even in short sessions. Every choice about rhythm, atmosphere and interface was made to keep pressure high without sacrificing clarity.",
-            },
-            {"type": "space"},
-            {"type": "header", "text": "Code development and gameplay logic"},
-            {
-                "type": "name",
-                "text": "Gabriele Bella",
-                "detail": "He designed the code architecture by separating rendering, flow, input and systems. He implemented the core loop, night progression, state handling and animatronic logic, balancing attack timing, reaction windows and pressure growth across nights.",
-            },
-            {
-                "type": "name",
-                "text": "Gameplay systems",
-                "detail": "Under his direction, flashlight, systems panel, error handling, camera triggers and state transitions were integrated with a focus on coherence between audiovisual feedback and gameplay consequences.",
-            },
-            {"type": "space"},
-            {"type": "header", "text": "Visual and audio asset selection"},
-            {
-                "type": "name",
-                "text": "Flavio Cosimo Cigna",
-                "detail": "He curated research, selection and organization of visual and audio assets. He helped shape a recognizable identity through coherent sprite, background, effects and music choices, while preserving readability in dense scenes.",
-            },
-            {
-                "type": "name",
-                "text": "Audiovisual direction",
-                "detail": "He supported atmosphere building with deliberate transitions, ambient noises and feedback sounds, essential to suggest danger, movement and urgency without interrupting gameplay flow.",
-            },
-            {"type": "space"},
-            {"type": "header", "text": "Final credits writing"},
-            {
-                "type": "name",
-                "text": "Javeeria Amin",
-                "detail": "She wrote, organized and refined the final credit text, clearly highlighting team roles and turning the ending into a narrative moment aligned with the rest of the experience.",
-            },
-            {
-                "type": "name",
-                "text": "Revision and layout",
-                "detail": "She refined tone, readability and text rhythm to make credits smooth, understandable and respectful of each contributor, keeping language clear and accessible.",
-            },
-            {"type": "space"},
-            {"type": "header", "text": "Special thanks"},
-            {
-                "type": "name",
-                "text": "To everyone who tested the game",
-                "detail": "A special thanks to everyone who played the game, reported issues, shared suggestions and helped refine difficulty, timing and feedback. Every test improved the final stability and overall experience quality.",
-            },
-            {"type": "space"},
-            {"type": "subtitle", "text": "Thanks for playing"},
-            {"type": "subtitle", "text": "See you on the next night"},
-        ]
 
     def _read_settings_data(self):
         try:
@@ -865,7 +722,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
             return False
 
         self.selected_cursor_size = size
-        self.custom_cursor_path = self._get_cursor_path_for_size(size)
+        self.custom_cursor_path = get_cursor_path_for_size(size)
         if self._load_custom_cursor():
             self.save_settings()
             return True
@@ -881,7 +738,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         if language not in self.language_options:
             return False
         self.language = language
-        self.credits_roll_script = self._build_credits_script(self.language)
+        self.credits_roll_script = build_credits_script_module(self.language)
         self.loading_message = self.tr("loading.default")
         self.save_settings()
         return True
