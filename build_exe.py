@@ -12,6 +12,7 @@ ENTRYPOINT = ROOT / "main.py"
 DIST_DIR = ROOT / "dist"
 BUILD_DIR = ROOT / "build"
 SPEC_FILE = ROOT / "gioco_scuola.spec"
+EXE_ICON = ROOT / "assets" / "images" / "logo.ico"
 
 
 def main() -> int:
@@ -24,6 +25,10 @@ def main() -> int:
         print("Installa prima con: python -m pip install pyinstaller")
         return 1
 
+    if not EXE_ICON.exists():
+        print(f"Impossibile trovare l'icona build: {EXE_ICON}")
+        return 1
+
     command = [
         sys.executable,
         "-m",
@@ -34,6 +39,8 @@ def main() -> int:
         "--windowed",
         "--name",
         "gioco_scuola",
+        "--icon",
+        str(EXE_ICON),
         "--add-data",
         f"assets{os.pathsep}assets",
         str(ENTRYPOINT),
