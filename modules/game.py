@@ -485,7 +485,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
                 {
                     "type": "name",
                     "text": "Parodia dichiarata",
-                    "detail": "Il gioco nasce come parodia del gioco 'Five Nights at Freddy's 3'. L'obiettivo non e replicare l'opera originale, ma reinterpretarne alcune atmosfere con tono ironico, ambientazione scolastica e personaggi volutamente sopra le righe.",
+                    "detail": "Il gioco nasce come parodia del gioco 'Five Nights at Freddy's 3'. L'obiettivo non è replicare l'opera originale, ma reinterpretarne alcune atmosfere con tono ironico, ambientazione scolastica e personaggi volutamente sopra le righe.",
                 },
                 {
                     "type": "name",

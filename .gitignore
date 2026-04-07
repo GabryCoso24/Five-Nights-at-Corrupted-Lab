@@ -1,6 +1,7 @@
 .venv
 venv-activator.sh
 savegame.json
+settings.json
 build/
 dist/
 *.spec
