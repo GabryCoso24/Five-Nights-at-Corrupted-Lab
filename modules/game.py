@@ -145,7 +145,8 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         left_x = int(self.width * 0.08)
         self.new_game_button = pygame.Rect(left_x, self.height // 2 - 80, button_width, button_height)
         self.continue_button = pygame.Rect(left_x, self.height // 2 + 15, button_width, button_height)
-        self.exit_button = pygame.Rect(left_x, self.height // 2 + 110, button_width, button_height)
+        self.credits_button = pygame.Rect(left_x, self.height // 2 + 110, button_width, button_height)
+        self.exit_button = pygame.Rect(left_x, self.height // 2 + 205, button_width, button_height)
 
         self.menu_music = "assets/audio/menu.wav"
         self.gameplay_ambience_music = "assets/audio/ambience.wav"
@@ -267,6 +268,35 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.credits_video_started_at = 0
         self.credits_video_last_frame_at = 0
         self.credits_video_frame_delay_ms = 33
+        self.credits_roll_speed_px_s = 78
+        self.credits_roll_end_delay_ms = 1400
+        self.credits_roll_script = [
+            {"type": "title", "text": "Five Nights at The Corrupted Lab"},
+            {"type": "subtitle", "text": "Titoli di coda"},
+            {"type": "space"},
+            {"type": "header", "text": "Sviluppo codice e logica di gioco"},
+            {
+                "type": "name",
+                "text": "Gabriele Bella",
+                "detail": "Ha progettato l'architettura del progetto, implementato il gameplay principale e curato il comportamento degli animatronics, dei sistemi e della progressione tra le notti.",
+            },
+            {"type": "space"},
+            {"type": "header", "text": "Selezione immagini e suoni"},
+            {
+                "type": "name",
+                "text": "Flavio Cosimo Cigna",
+                "detail": "Ha selezionato e organizzato il materiale visivo e audio, contribuendo all'atmosfera del gioco con una scelta coerente di sprite, ambientazioni, effetti e tracce sonore.",
+            },
+            {"type": "space"},
+            {"type": "header", "text": "Stesura credits finali"},
+            {
+                "type": "name",
+                "text": "Javeria Amin",
+                "detail": "Ha redatto e strutturato i crediti finali, definendo testi e ordine di presentazione per valorizzare i ruoli del team in una chiusura chiara e narrativa.",
+            },
+            {"type": "space"},
+            {"type": "subtitle", "text": "Grazie per aver giocato"},
+        ]
         self.menu_video_candidates = [
             os.path.join("assets", "video", "menu.mkv"),
             os.path.join("assets", "video", "menu.mp4"),

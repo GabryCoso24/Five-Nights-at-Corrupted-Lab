@@ -71,6 +71,9 @@ class GameEventHandlersMixin:
                 self.start_new_game()
             elif self.can_continue and self.continue_button.collidepoint(event.pos):
                 self.continue_game()
+            elif self.credits_button.collidepoint(event.pos):
+                self.audio.play_sound(self.button_sound, volume=0.8)
+                self._start_credits_video()
             elif self.exit_button.collidepoint(event.pos):
                 self.audio.play_sound(self.button_sound, volume=0.8)
                 pygame.event.post(pygame.event.Event(pygame.QUIT))

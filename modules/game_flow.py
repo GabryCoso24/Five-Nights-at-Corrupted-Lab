@@ -436,9 +436,11 @@ class GameFlowMixin:
                 if not self.jumpscare_video_cap.isOpened():
                     self.jumpscare_video_cap = None
                 else:
-                    fps = float(self.jumpscare_video_cap.get(cv2.CAP_PROP_FPS) or 0.0)
                     frame_count = float(self.jumpscare_video_cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0)
-                    if fps > 1.0 and frame_count > 1.0:
+                    if frame_count > 1.0:
+                        fps = float(self.jumpscare_video_cap.get(cv2.CAP_PROP_FPS) or 0.0)
+                        if not (20.0 <= fps <= 120.0):
+                            fps = 30.0
                         est_ms = int((frame_count / fps) * 1000)
                         self.jumpscare_duration_ms = max(1000, min(8000, est_ms))
             except Exception:

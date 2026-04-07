@@ -6,6 +6,71 @@ from modules.ui_manager import add_graphic_element, draw_graphic_elements
 
 
 class GameRenderingMixin:
+    @staticmethod
+    def _get_video_fps(capture, default_fps=30.0):
+        if capture is None:
+            return float(default_fps)
+        fps = float(capture.get(5) or 0.0)  # OpenCV property id 5 == CAP_PROP_FPS
+        # Keep only plausible values; bad metadata can report 0 or absurd rates.
+        if 20.0 <= fps <= 120.0:
+            return fps
+        return float(default_fps)
+
+    def _read_synced_video_frame(self, capture, started_at_ms, now_ms):
+        if capture is None:
+            return None
+
+        # Keep A/V sync from elapsed time, but avoid expensive seek-on-every-frame stutter.
+        elapsed_ms = max(0, int(now_ms - started_at_ms))
+        fps = self._get_video_fps(capture, default_fps=30.0)
+        target_frame = max(0, int((elapsed_ms / 1000.0) * fps))
+
+        if not hasattr(self, "_video_sync_cache"):
+            self._video_sync_cache = {}
+
+        cache_key = id(capture)
+        state = self._video_sync_cache.get(cache_key)
+        if state is None:
+            state = {
+                "last_frame": -1,
+                "last_surface": None,
+            }
+            self._video_sync_cache[cache_key] = state
+
+        last_frame = int(state.get("last_frame", -1))
+        last_surface = state.get("last_surface")
+
+        # If we are still in the same frame time slot, reuse the last decoded frame.
+        if target_frame <= last_frame:
+            return last_surface
+
+        frames_to_advance = target_frame - last_frame
+        frame = None
+
+        if frames_to_advance > 8:
+            # Large drift: one seek is cheaper than decoding many frames.
+            capture.set(1, target_frame)
+            ok, frame = capture.read()
+            if not ok or frame is None:
+                return None
+            last_frame = target_frame
+        else:
+            # Small drift: decode sequentially for smoother playback cadence.
+            reads = max(1, frames_to_advance)
+            for _ in range(reads):
+                ok, frame = capture.read()
+                if not ok or frame is None:
+                    return None
+                last_frame += 1
+
+        frame_rgb = frame[:, :, ::-1]
+        frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
+        scaled_surface = pygame.transform.scale(frame_surface, (self.width, self.height))
+
+        state["last_frame"] = last_frame
+        state["last_surface"] = scaled_surface
+        return scaled_surface
+
     def _draw_end_video_label(self, text, color):
         panel_h = 94
         panel = pygame.Surface((self.width, panel_h), pygame.SRCALPHA)
@@ -76,6 +141,7 @@ class GameRenderingMixin:
         self.queue_button(self.new_game_button, "New Game")
         if self.can_continue:
             self.queue_button(self.continue_button, "Continua")
+        self.queue_button(self.credits_button, "Credits")
         self.queue_button(self.exit_button, "Exit")
         draw_graphic_elements(self.screen)
 
@@ -452,19 +518,20 @@ class GameRenderingMixin:
         frame_surface = None
 
         if self.jumpscare_video_cap is not None:
-            if now_ms - self.jumpscare_last_frame_at >= self.jumpscare_frame_delay_ms:
-                ok, frame = self.jumpscare_video_cap.read()
-                self.jumpscare_last_frame_at = now_ms
-                if ok:
-                    frame_rgb = frame[:, :, ::-1]
-                    frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
-                    self.jumpscare_last_surface = frame_surface
-                else:
-                    try:
-                        self.jumpscare_video_cap.release()
-                    except Exception:
-                        pass
-                    self.jumpscare_video_cap = None
+            frame_surface = self._read_synced_video_frame(
+                self.jumpscare_video_cap,
+                self.jumpscare_start_time,
+                now_ms,
+            )
+            self.jumpscare_last_frame_at = now_ms
+            if frame_surface is not None:
+                self.jumpscare_last_surface = frame_surface
+            else:
+                try:
+                    self.jumpscare_video_cap.release()
+                except Exception:
+                    pass
+                self.jumpscare_video_cap = None
 
             if frame_surface is None:
                 frame_surface = self.jumpscare_last_surface
@@ -511,19 +578,17 @@ class GameRenderingMixin:
                 self.enter_menu(play_click=False)
             return
 
-        if now_ms - self.defeat_video_last_frame_at < self.defeat_video_frame_delay_ms:
-            return
-
-        ok, frame = self.defeat_video_cap.read()
+        frame_surface = self._read_synced_video_frame(
+            self.defeat_video_cap,
+            self.defeat_video_started_at,
+            now_ms,
+        )
         self.defeat_video_last_frame_at = now_ms
 
-        if not ok:
+        if frame_surface is None:
             self.enter_menu(play_click=False)
             return
 
-        frame_rgb = frame[:, :, ::-1]
-        frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
-        frame_surface = pygame.transform.scale(frame_surface, (self.width, self.height))
         self.screen.blit(frame_surface, (0, 0))
         self._draw_end_video_label("GAME OVER", (255, 90, 90))
 
@@ -539,19 +604,17 @@ class GameRenderingMixin:
                 self.enter_menu(play_click=False)
             return
 
-        if now_ms - self.victory_video_last_frame_at < self.victory_video_frame_delay_ms:
-            return
-
-        ok, frame = self.victory_video_cap.read()
+        frame_surface = self._read_synced_video_frame(
+            self.victory_video_cap,
+            self.victory_video_started_at,
+            now_ms,
+        )
         self.victory_video_last_frame_at = now_ms
 
-        if not ok:
+        if frame_surface is None:
             self.enter_menu(play_click=False)
             return
 
-        frame_rgb = frame[:, :, ::-1]
-        frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
-        frame_surface = pygame.transform.scale(frame_surface, (self.width, self.height))
         self.screen.blit(frame_surface, (0, 0))
         self._draw_end_video_label("NOTTE SUPERATA", (120, 255, 150))
 
@@ -569,19 +632,17 @@ class GameRenderingMixin:
                 self._start_credits_video()
             return
 
-        if now_ms - self.endgame_video_last_frame_at < self.endgame_video_frame_delay_ms:
-            return
-
-        ok, frame = self.endgame_video_cap.read()
+        frame_surface = self._read_synced_video_frame(
+            self.endgame_video_cap,
+            self.endgame_video_started_at,
+            now_ms,
+        )
         self.endgame_video_last_frame_at = now_ms
 
-        if not ok:
+        if frame_surface is None:
             self._start_credits_video()
             return
 
-        frame_rgb = frame[:, :, ::-1]
-        frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
-        frame_surface = pygame.transform.scale(frame_surface, (self.width, self.height))
         self.screen.blit(frame_surface, (0, 0))
         self._draw_end_video_label("ENDGAME", (255, 220, 120))
         skip_hint = self.font_small.render("Premi E per skippare", True, (245, 220, 170))
@@ -590,31 +651,116 @@ class GameRenderingMixin:
     def draw_credits_video(self):
         now_ms = pygame.time.get_ticks()
 
+        # Optional video background behind the rolling credits.
+        if self.credits_video_cap is not None:
+            frame_surface = self._read_synced_video_frame(
+                self.credits_video_cap,
+                self.credits_video_started_at,
+                now_ms,
+            )
+            self.credits_video_last_frame_at = now_ms
+            if frame_surface is not None:
+                self.screen.blit(frame_surface, (0, 0))
+            else:
+                self.credits_video_cap = None
+
         if self.credits_video_cap is None:
             self.screen.fill((0, 0, 0))
-            self._draw_end_video_label("CREDITS", (180, 220, 255))
-            info = self.font_small.render("Video credits non disponibile", True, (180, 220, 255))
-            self.screen.blit(info, info.get_rect(center=(self.width // 2, self.height // 2)))
-            skip_hint = self.font_small.render("Premi E per skippare", True, (180, 220, 255))
-            self.screen.blit(skip_hint, skip_hint.get_rect(bottomright=(self.width - 26, self.height - 24)))
-            if now_ms - self.credits_video_started_at >= 1500:
-                self.enter_menu(play_click=False)
-            return
 
-        if now_ms - self.credits_video_last_frame_at < self.credits_video_frame_delay_ms:
-            return
+        # Improve readability regardless of background.
+        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        overlay.fill((4, 8, 16, 168))
+        self.screen.blit(overlay, (0, 0))
 
-        ok, frame = self.credits_video_cap.read()
-        self.credits_video_last_frame_at = now_ms
+        script = list(getattr(self, "credits_roll_script", []) or [])
+        if not script:
+            script = [
+                {"type": "title", "text": "CREDITS"},
+                {"type": "subtitle", "text": "Grazie per aver giocato"},
+            ]
 
-        if not ok:
+        elapsed_ms = max(0, now_ms - int(getattr(self, "credits_video_started_at", now_ms)))
+        speed_px_s = max(20, int(getattr(self, "credits_roll_speed_px_s", 78)))
+        scroll_offset = (elapsed_ms / 1000.0) * speed_px_s
+
+        x_center = self.width // 2
+        y = self.height + 80 - scroll_offset
+        body_font = self.font_small
+
+        for block in script:
+            block_type = str(block.get("type", "name"))
+            text = str(block.get("text", ""))
+
+            if block_type == "space":
+                y += 36
+                continue
+
+            if block_type == "title":
+                surf = self.font_night.render(text, True, (214, 235, 255))
+                shadow = self.font_night.render(text, True, (8, 12, 18))
+                rect = surf.get_rect(center=(x_center, int(y)))
+                self.screen.blit(shadow, rect.move(2, 2))
+                self.screen.blit(surf, rect)
+                y += 98
+                continue
+
+            if block_type == "subtitle":
+                surf = self.font_hour.render(text, True, (176, 214, 255))
+                shadow = self.font_hour.render(text, True, (6, 10, 16))
+                rect = surf.get_rect(center=(x_center, int(y)))
+                self.screen.blit(shadow, rect.move(2, 2))
+                self.screen.blit(surf, rect)
+                y += 74
+                continue
+
+            if block_type == "header":
+                surf = body_font.render(text, True, (255, 214, 140))
+                shadow = body_font.render(text, True, (20, 16, 8))
+                rect = surf.get_rect(center=(x_center, int(y)))
+                self.screen.blit(shadow, rect.move(2, 2))
+                self.screen.blit(surf, rect)
+                y += 46
+                continue
+
+            name_surf = body_font.render(text, True, (232, 240, 248))
+            name_shadow = body_font.render(text, True, (10, 12, 16))
+            name_rect = name_surf.get_rect(center=(x_center, int(y)))
+            self.screen.blit(name_shadow, name_rect.move(2, 2))
+            self.screen.blit(name_surf, name_rect)
+            y += 36
+
+            detail = str(block.get("detail", "")).strip()
+            if detail:
+                words = detail.split()
+                line = []
+                max_width = int(self.width * 0.76)
+                lines = []
+                for word in words:
+                    candidate = " ".join(line + [word]).strip()
+                    if body_font.size(candidate)[0] <= max_width:
+                        line.append(word)
+                    else:
+                        if line:
+                            lines.append(" ".join(line))
+                        line = [word]
+                if line:
+                    lines.append(" ".join(line))
+
+                for txt in lines:
+                    line_surf = body_font.render(txt, True, (176, 194, 214))
+                    line_shadow = body_font.render(txt, True, (8, 10, 14))
+                    line_rect = line_surf.get_rect(center=(x_center, int(y)))
+                    self.screen.blit(line_shadow, line_rect.move(2, 2))
+                    self.screen.blit(line_surf, line_rect)
+                    y += 34
+                y += 16
+
+        total_height = y + scroll_offset - (self.height + 80)
+        finished_y = -max(180, int(getattr(self, "credits_roll_end_delay_ms", 1400) * speed_px_s / 1000.0))
+        if (self.height + 80 - scroll_offset + total_height) < finished_y:
             self.enter_menu(play_click=False)
             return
 
-        frame_rgb = frame[:, :, ::-1]
-        frame_surface = pygame.surfarray.make_surface(frame_rgb.swapaxes(0, 1))
-        frame_surface = pygame.transform.scale(frame_surface, (self.width, self.height))
-        self.screen.blit(frame_surface, (0, 0))
         self._draw_end_video_label("CREDITS", (180, 220, 255))
         skip_hint = self.font_small.render("Premi E per skippare", True, (180, 220, 255))
         self.screen.blit(skip_hint, skip_hint.get_rect(bottomright=(self.width - 26, self.height - 24)))

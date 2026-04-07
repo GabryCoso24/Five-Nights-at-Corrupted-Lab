@@ -694,7 +694,7 @@ class AnimatronicsManager:
 					and watched_camera == animatronic.current_camera
 				)
 
-				if animatronic.is_at_office_door() and is_watched and now_ms >= animatronic.next_error_at:
+				if animatronic.is_at_office_door() and now_ms >= animatronic.next_error_at:
 					available_error_types = [e for e in ("camera", "ventilation", "flashlight") if e not in active_error_set]
 					if available_error_types:
 						# At the office door, error-type animatronics must create concrete pressure.
