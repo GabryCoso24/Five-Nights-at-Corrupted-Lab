@@ -439,7 +439,7 @@ class VideoCamere:
 
         return False
 
-    def queue_trigger(self):
+    def queue_trigger(self, game=None):
         if not self.trigger_visible:
             return
 
@@ -455,7 +455,7 @@ class VideoCamere:
 
         add_graphic_element(
             rect=self.trigger_rect,
-            text="CAM",
+            text=self._ui_text("ui.cam_trigger", "CAM", game),
             color=color,
             font=self.label_font,
             text_color=text_color,
@@ -607,13 +607,13 @@ class VideoCamere:
             rect.center = center
             self._external_node_rects[node_id] = rect
 
-    def _draw_external_nodes(self, surface):
+    def _draw_external_nodes(self, surface, game=None):
         if not self._external_node_rects:
             return
         for node_id, rect in self._external_node_rects.items():
             pygame.draw.rect(surface, (0, 0, 0, 0), rect)
             pygame.draw.rect(surface, (235, 235, 235), rect, width=2)
-            label = node_id.replace("office_", "OFFICE ").replace("cam", "CAM ").upper()
+            label = self._external_node_label(node_id, game)
             txt = self.label_font.render(label, True, (235, 235, 235))
             surface.blit(txt, txt.get_rect(center=rect.center))
 
@@ -1533,7 +1533,7 @@ class VideoCamere:
         except pygame.error:
             return
 
-    def draw_overlay(self, surface):
+    def draw_overlay(self, surface, game=None):
         if not self.is_open:
             return
 
@@ -1545,11 +1545,11 @@ class VideoCamere:
         pygame.draw.rect(surface, (18, 20, 24), self.panel_rect)
         pygame.draw.rect(surface, (92, 98, 106), self.panel_rect, width=2)
 
-        title = self.title_font.render("SISTEMA CAMERE", True, (235, 235, 235))
+        title = self.title_font.render(self._ui_text("ui.cam_system_title", "CAMERAS SYSTEM", game), True, (235, 235, 235))
         surface.blit(title, title.get_rect(center=(self.panel_rect.centerx, self.panel_rect.top + 40)))
 
         if not self._feeds:
-            missing = self.label_font.render("Nessuna immagine camera trovata in assets/images/cams", True, (255, 110, 110))
+            missing = self.label_font.render(self._ui_text("ui.cam_no_feeds", "No camera images found in assets/images/cams", game), True, (255, 110, 110))
             surface.blit(missing, missing.get_rect(center=self.panel_rect.center))
             return
 
@@ -1590,7 +1590,7 @@ class VideoCamere:
             blackout = pygame.Surface((feed_area.width, feed_area.height), pygame.SRCALPHA)
             blackout.fill((0, 0, 0, 245))
             surface.blit(blackout, feed_area.topleft)
-            label = self.title_font.render("CAM ERROR", True, (255, 80, 80))
+            label = self.title_font.render(self._ui_text("ui.cam_error", "CAM ERROR", game), True, (255, 80, 80))
             surface.blit(label, label.get_rect(center=feed_area.center))
         else:
             noise_intensity = 1.55 if not active_jammed else 3.8
@@ -1628,7 +1628,7 @@ class VideoCamere:
                     y = base_y - target_h + random.randint(-6, 6)
                     surface.blit(sprite, (x, y))
 
-                warning = self.label_font.render("MOVIMENTO RILEVATO", True, (255, 90, 90))
+                warning = self.label_font.render(self._ui_text("ui.cam_movement", "MOVIMENTO RILEVATO", game), True, (255, 90, 90))
                 surface.blit(warning, warning.get_rect(topright=(feed_area.right - 12, feed_area.top + 16)))
         elif (not self._camera_error_active) and (not active_jammed) and active_camera_id in self._threat_cameras and self._threat_sprite is not None:
             sprite_h = int(feed_area.height * 0.65)
@@ -1645,7 +1645,7 @@ class VideoCamere:
             sprite_y = feed_area.bottom - sprite_h + jitter_y
             surface.blit(sprite, (sprite_x, sprite_y))
 
-            warning = self.label_font.render("MOVIMENTO RILEVATO", True, (255, 90, 90))
+            warning = self.label_font.render(self._ui_text("ui.cam_movement", "MOVIMENTO RILEVATO", game), True, (255, 90, 90))
             surface.blit(warning, warning.get_rect(topright=(feed_area.right - 12, feed_area.top + 16)))
 
         pygame.draw.rect(surface, (168, 172, 178), feed_area, width=2)
@@ -1658,7 +1658,7 @@ class VideoCamere:
         button_x = map_rect.left + (map_rect.width - button_w) // 2
         button_y = max(self.panel_rect.top + 100, map_rect.top - button_h - 8)
         self._map_toggle_rect = pygame.Rect(button_x, button_y, button_w, button_h)
-        toggle_text = "Map\nCondotti" if self._active_map == "main" else "Map\nPrincipale"
+        toggle_text = self._ui_text("ui.cam_map_vents", "Map\nVents", game) if self._active_map == "main" else self._ui_text("ui.cam_map_main", "Map\nMain", game)
         self._draw_monitor_button(surface, self._map_toggle_rect, toggle_text)
 
         self._draw_map_background(surface, map_rect)
@@ -1667,7 +1667,7 @@ class VideoCamere:
         if self._active_map == "vents":
             self._draw_vent_block_rects(surface, map_rect)
         if self._admin_mode:
-            self._draw_external_nodes(surface)
+            self._draw_external_nodes(surface, game)
 
         for idx, cam_rect in self._cam_button_rects:
             feed = self._feeds[idx]
@@ -1691,7 +1691,7 @@ class VideoCamere:
             self._draw_cam_triangle(surface, cam_rect, triangle_enabled, is_selected)
 
             cam_number = feed["label"].replace("CAM ", "").strip()
-            top = self.label_font.render("CAM", True, (238, 242, 248))
+            top = self.label_font.render(self._ui_text("ui.cam_label", "CAM", game), True, (238, 242, 248))
             bottom = self.label_font.render(cam_number, True, (238, 242, 248))
             top = pygame.transform.smoothscale(top, (max(20, cam_rect.width - 10), max(12, cam_rect.height // 2 - 2)))
             bottom = pygame.transform.smoothscale(bottom, (max(12, cam_rect.width - 16), max(10, cam_rect.height // 2 - 2)))
@@ -1699,5 +1699,18 @@ class VideoCamere:
             surface.blit(bottom, bottom.get_rect(center=(cam_rect.centerx, cam_rect.top + cam_rect.height * 0.72)))
 
         if self._admin_mode:
-            hint = self.label_font.render("ADMIN: drag=move | double-click line=add node | drag node=shape path | vent: double-click close/open (1 only) | drag+wheel, shift+wheel=H | right-click line=remove | right-click cam/node/vent-rect=toggle link | middle=triangle | S=save", True, (255, 192, 96))
+            hint = self.label_font.render(self._ui_text("ui.cam_admin_hint", "ADMIN: drag=move | double-click line=add node | drag node=shape path | vent: double-click close/open (1 only) | drag+wheel, shift+wheel=H | right-click line=remove | right-click cam/node/vent-rect=toggle link | middle=triangle | S=save", game), True, (255, 192, 96))
             surface.blit(hint, hint.get_rect(bottomleft=(self.panel_rect.left + 16, self.panel_rect.bottom - 12)))
+
+    def _ui_text(self, key, fallback, game=None):
+        if game is not None and hasattr(game, "tr"):
+            return game.tr(key)
+        return fallback
+
+    def _external_node_label(self, node_id, game=None):
+        if node_id.startswith("office_"):
+            office_side = node_id.split("_", 1)[-1]
+            return self._ui_text(f"ui.cam_office_{office_side}", node_id.replace("_", " ").upper(), game)
+        if node_id.startswith("cam"):
+            return self._ui_text("ui.cam_label", "CAM", game) + " " + node_id.replace("cam", "")
+        return node_id.upper()

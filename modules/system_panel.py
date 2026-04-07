@@ -58,7 +58,7 @@ class SystemPanel:
             and self.trigger_rect.collidepoint(mouse_pos)
         )
 
-    def queue_trigger(self):
+    def queue_trigger(self, game=None):
         if not self.trigger_visible:
             return
 
@@ -73,7 +73,7 @@ class SystemPanel:
 
         add_graphic_element(
             rect=self.trigger_rect,
-            text="SYSTEM",
+            text=self._ui_text("ui.system_trigger", "SYSTEM", game),
             color=fill,
             font=self.label_font,
             text_color=text_color,
@@ -110,7 +110,7 @@ class SystemPanel:
 
         return True, None
 
-    def draw_overlay(self, surface, errors, reboots=None, now_ms=0):
+    def draw_overlay(self, surface, errors, reboots=None, now_ms=0, game=None):
         if not self.is_open:
             return
 
@@ -122,43 +122,49 @@ class SystemPanel:
         x = self.panel_rect.left + 20
         y = self.panel_rect.top + 16
 
-        self._draw_line(surface, "system restart", (124, 255, 124), x, y, title=True)
+        self._draw_line(surface, self._ui_text("ui.system_title", "system restart", game), (124, 255, 124), x, y, title=True)
         y += 52
-        self._draw_line(surface, "menu>>>", (124, 255, 124), x, y)
+        self._draw_line(surface, self._ui_text("ui.system_menu", "menu>>>", game), (124, 255, 124), x, y)
         y += 50
 
-        self._draw_error_line(surface, "camera system", errors.get("camera", False), x, y, reboots.get("camera", 0), now_ms)
+        self._draw_error_line(surface, self._ui_text("ui.system_camera", "camera system", game), errors.get("camera", False), x, y, reboots.get("camera", 0), now_ms, game)
         y += 48
-        self._draw_error_line(surface, "ventilation", errors.get("ventilation", False), x, y, reboots.get("ventilation", 0), now_ms)
+        self._draw_error_line(surface, self._ui_text("ui.system_ventilation", "ventilation", game), errors.get("ventilation", False), x, y, reboots.get("ventilation", 0), now_ms, game)
         y += 48
-        self._draw_error_line(surface, "flashlight", errors.get("flashlight", False), x, y, reboots.get("flashlight", 0), now_ms)
+        self._draw_error_line(surface, self._ui_text("ui.system_flashlight", "flashlight", game), errors.get("flashlight", False), x, y, reboots.get("flashlight", 0), now_ms, game)
         y += 62
 
-        self._button_rects["reboot_camera"] = self._draw_action(surface, "reboot camera", x, y)
+        self._button_rects["reboot_camera"] = self._draw_action(surface, self._ui_text("ui.system_reboot_camera", "reboot camera", game), x, y)
         y += 44
-        self._button_rects["reboot_ventilation"] = self._draw_action(surface, "reboot ventilation", x, y)
+        self._button_rects["reboot_ventilation"] = self._draw_action(surface, self._ui_text("ui.system_reboot_ventilation", "reboot ventilation", game), x, y)
         y += 44
-        self._button_rects["reboot_flashlight"] = self._draw_action(surface, "reboot flashlight", x, y)
+        self._button_rects["reboot_flashlight"] = self._draw_action(surface, self._ui_text("ui.system_reboot_flashlight", "reboot flashlight", game), x, y)
         y += 46
-        self._button_rects["reboot_all"] = self._draw_action(surface, "reboot all", x, y, important=True)
+        self._button_rects["reboot_all"] = self._draw_action(surface, self._ui_text("ui.system_reboot_all", "reboot all", game), x, y, important=True)
         y += 46
-        self._button_rects["exit"] = self._draw_action(surface, "exit", x, y)
+        self._button_rects["exit"] = self._draw_action(surface, self._ui_text("ui.system_exit", "exit", game), x, y)
+
+    def _ui_text(self, key, fallback, game=None):
+        if game is not None and hasattr(game, "tr"):
+            return game.tr(key)
+        return fallback
 
     def _draw_line(self, surface, text, color, x, y, title=False):
         font = self.panel_title_font if title else self.panel_font
         label = font.render(text, True, color)
         surface.blit(label, (x, y))
 
-    def _draw_error_line(self, surface, name, active, x, y, reboot_until=0, now_ms=0):
+    def _draw_error_line(self, surface, name, active, x, y, reboot_until=0, now_ms=0, game=None):
         base = self.panel_font.render(f">>> {name}", True, (120, 250, 120))
         surface.blit(base, (x, y))
 
         if reboot_until and now_ms < reboot_until:
             remaining = (reboot_until - now_ms) / 1000.0
-            state = f"reboot {remaining:0.1f}s"
+            state_template = self._ui_text("ui.system_reboot_remaining", "reboot {seconds:.1f}s", game)
+            state = state_template.format(seconds=remaining)
             color = (255, 210, 120)
         else:
-            state = "error" if active else "ok"
+            state = self._ui_text("ui.system_error", "error", game) if active else self._ui_text("ui.system_ok", "ok", game)
             color = (255, 95, 95) if active else (120, 250, 120)
         state_label = self.panel_font.render(state, True, color)
         state_x = self.panel_rect.right - state_label.get_width() - 28

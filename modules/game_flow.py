@@ -13,6 +13,59 @@ except Exception:
 
 
 class GameFlowMixin:
+    def _resolve_night_call_path(self, night_value=None):
+        night_index = self._clamp_night(night_value if night_value is not None else getattr(self, "current_night", 1))
+        language = str(getattr(self, "language", "en") or "en").strip().lower()
+        call_dir = os.path.join("assets", "audio", "calls", language)
+
+        for candidate_night in (night_index, 1):
+            base_name = f"night{candidate_night}_{language}"
+            for extension in (".wav", ".mp3", ".ogg"):
+                candidate_path = os.path.join(call_dir, base_name + extension)
+                if os.path.isfile(candidate_path):
+                    return candidate_path
+        return None
+
+    def _stop_current_night_call(self):
+        current_call = getattr(self, "current_night_call_path", None)
+        if current_call:
+            self.audio.stop_sound(current_call)
+        self.current_night_call_path = None
+        self.current_night_call_muted = False
+        if hasattr(self, "call_mute_button_rect"):
+            self.call_mute_button_rect = pygame.Rect(0, 0, 0, 0)
+
+    def _mute_current_night_call(self):
+        current_call = getattr(self, "current_night_call_path", None)
+        if not current_call or getattr(self, "current_night_call_muted", False):
+            return False
+
+        self._stop_current_night_call()
+        return True
+
+    def _play_night_call(self, night_value=None):
+        self._stop_current_night_call()
+
+        call_path = self._resolve_night_call_path(night_value)
+        if not call_path:
+            return False
+
+        played = self.audio.play_sound(call_path, volume=0.95)
+        if played:
+            self.current_night_call_path = call_path
+            self.current_night_call_muted = False
+        return played
+
+    def _sync_current_night_call(self):
+        current_call = getattr(self, "current_night_call_path", None)
+        if not current_call:
+            return False
+        if self.audio.is_sound_playing(current_call):
+            return True
+
+        self._stop_current_night_call()
+        return False
+
     def _stop_system_loop_sounds(self):
         self.audio.stop_loop_sound(getattr(self, "system_reboot_sound", "assets/audio/reboot.wav"))
         self.audio.stop_loop_sound(getattr(self, "system_error_sound", "assets/audio/error.wav"))
@@ -435,10 +488,12 @@ class GameFlowMixin:
         self._stop_defeat_video()
         self._stop_victory_video()
         self._start_gameplay_ambience()
+        self._play_night_call(self.current_night)
         self.video_camere.close()
 
     def enter_jumpscare(self, name, continue_game=False, pending_error=None):
         self._stop_jumpscare_media()
+        self._stop_current_night_call()
         self._stop_system_loop_sounds()
         self.jumpscare_name = name
         self.jumpscare_start_time = pygame.time.get_ticks()
@@ -495,6 +550,7 @@ class GameFlowMixin:
 
     def _start_defeat_video(self):
         self._stop_jumpscare_media()
+        self._stop_current_night_call()
         self._stop_system_loop_sounds()
         self._stop_defeat_video()
         self.defeat_video_started_at = pygame.time.get_ticks()
@@ -559,6 +615,7 @@ class GameFlowMixin:
 
     def _start_victory_video(self):
         self._stop_victory_video()
+        self._stop_current_night_call()
         self._stop_system_loop_sounds()
         self.victory_video_started_at = pygame.time.get_ticks()
         self.victory_video_last_frame_at = 0
@@ -620,6 +677,7 @@ class GameFlowMixin:
 
     def _start_endgame_video(self):
         self._stop_endgame_video()
+        self._stop_current_night_call()
         self._stop_system_loop_sounds()
         self.endgame_video_started_at = pygame.time.get_ticks()
         self.endgame_video_last_frame_at = 0
@@ -680,6 +738,7 @@ class GameFlowMixin:
 
     def _start_credits_video(self):
         self._stop_credits_video()
+        self._stop_current_night_call()
         self._stop_system_loop_sounds()
         self.credits_video_started_at = pygame.time.get_ticks()
         self.credits_video_last_frame_at = 0
@@ -777,6 +836,7 @@ class GameFlowMixin:
 
     def exit_night(self):
         self.audio.play_sound(self.button_sound, volume=0.8)
+        self._stop_current_night_call()
         self.audio.stop_music(fade_ms=self.music_fade_ms)
         self._stop_system_loop_sounds()
         if getattr(self, "last_completed_night", 0) >= getattr(self, "max_night", 5):
@@ -790,6 +850,7 @@ class GameFlowMixin:
     def enter_menu(self, play_click=False):
         if play_click:
             self.audio.play_sound(self.button_sound, volume=0.8)
+        self._stop_current_night_call()
         self._stop_gameplay_ambience(fade_ms=300)
         self.audio.stop_loop_sound(getattr(self, "system_reboot_sound", "assets/audio/reboot.wav"))
         self.audio.stop_loop_sound(getattr(self, "system_error_sound", "assets/audio/error.wav"))

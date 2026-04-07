@@ -70,6 +70,19 @@ def _set_windows_app_id(app_id):
         pass
 
 
+def _set_windows_dpi_awareness():
+    if os.name != "nt":
+        return
+
+    try:
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+
 def _apply_window_icon(icon_path):
     if not icon_path:
         return
@@ -156,7 +169,8 @@ def main():
         os.chdir(sys._MEIPASS)
 
     window_appearance = _load_window_appearance_settings()
-    _set_windows_app_id(window_appearance.get("windows_app_id", "GiocoScuola.CorruptedLab"))
+    _set_windows_app_id(window_appearance.get("windows_app_id", "FiveNights.CorruptedLab"))
+    _set_windows_dpi_awareness()
 
     pygame.init()
     _apply_window_icon(window_appearance.get("window_icon", ""))

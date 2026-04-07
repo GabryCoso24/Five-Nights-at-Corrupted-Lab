@@ -59,6 +59,11 @@ class GameEventHandlersMixin:
                 if now_ms - self.credits_video_started_at >= 700:
                     self.enter_menu(play_click=False)
         elif self.state == "game":
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mute_rect = getattr(self, "call_mute_button_rect", None)
+                if mute_rect is not None and mute_rect.collidepoint(event.pos):
+                    self._mute_current_night_call()
+                    return
             self.handle_game_events(event)
 
     def handle_menu_events(self, event):

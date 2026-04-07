@@ -12,6 +12,7 @@ class AudioManager:
             self.enabled = False
         self.current_music = None
         self.sounds = {}
+        self.sound_channels = {}
         self.loop_channels = {}
 
     def play_music(self, music_file, loop=True, volume=0.5, fade_ms=0):
@@ -69,8 +70,26 @@ class AudioManager:
 
         sound = self.sounds[sound_file]
         sound.set_volume(volume)
-        sound.play()
+        channel = sound.play()
+        if channel is None:
+            return False
+        self.sound_channels[sound_file] = channel
         return True
+
+    def stop_sound(self, sound_file):
+        if not self.enabled:
+            return
+        channel = self.sound_channels.pop(sound_file, None)
+        if channel is not None:
+            channel.stop()
+
+    def is_sound_playing(self, sound_file):
+        if not self.enabled:
+            return False
+        channel = self.sound_channels.get(sound_file)
+        if channel is None:
+            return False
+        return bool(channel.get_busy())
 
     def start_loop_sound(self, sound_file, volume=1):
         if not self.enabled:

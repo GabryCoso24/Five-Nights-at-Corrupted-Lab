@@ -162,6 +162,46 @@ class GameRenderingMixin:
             border_width=3,
         )
 
+    def _draw_mute_call_button(self, anchor_rect):
+        if not getattr(self, "current_night_call_path", None):
+            self.call_mute_button_rect = pygame.Rect(0, 0, 0, 0)
+            return None
+
+        button_text = self.tr("ui.mute_call")
+        text_color = (232, 245, 226)
+        text_surface = self.font_small.render(button_text, True, text_color)
+
+        padding_x = 22
+        padding_y = 11
+        button_width = max(160, text_surface.get_width() + (padding_x * 2))
+        button_height = max(40, text_surface.get_height() + (padding_y * 2))
+        button_left = anchor_rect.right + 18
+        button_top = anchor_rect.top - 4
+        button_rect = pygame.Rect(button_left, button_top, button_width, button_height)
+
+        if button_rect.right > self.width - 20:
+            button_rect.right = self.width - 20
+
+        hovered = button_rect.collidepoint(pygame.mouse.get_pos())
+        muted = bool(getattr(self, "current_night_call_muted", False))
+
+        fill_color = (42, 128, 56, 176 if hovered else 142)
+        if muted:
+            fill_color = (38, 102, 46, 118 if hovered else 96)
+        border_color = (168, 232, 145, 220 if hovered else 165)
+        if muted:
+            border_color = (126, 186, 114, 160 if hovered else 132)
+
+        button_surface = pygame.Surface((button_rect.width, button_rect.height), pygame.SRCALPHA)
+        pygame.draw.rect(button_surface, fill_color, button_surface.get_rect(), border_radius=14)
+        pygame.draw.rect(button_surface, border_color, button_surface.get_rect(), width=2, border_radius=14)
+        self.screen.blit(button_surface, button_rect.topleft)
+
+        text_rect = text_surface.get_rect(center=button_rect.center)
+        self.screen.blit(text_surface, text_rect)
+        self.call_mute_button_rect = button_rect
+        return button_rect
+
     def draw_glitch_overlay(self, surface):
         scanlines = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
         for y in range(0, self.height, 4):
@@ -300,6 +340,7 @@ class GameRenderingMixin:
         mouse_x, _ = mouse_pos
         admin_mode = self.video_camere.is_admin_mode()
         now_ms = pygame.time.get_ticks()
+        self._sync_current_night_call()
         self._update_reboots(now_ms)
         self.maybe_trigger_random_system_error(now_ms=now_ms, allow_when_admin_paused=False)
 
@@ -474,7 +515,12 @@ class GameRenderingMixin:
             indicator_color = (255, 80, 80)
 
         indicator_label = self.font_small.render(indicator_text, True, indicator_color)
-        self.screen.blit(indicator_label, (24, 24))
+        indicator_rect = indicator_label.get_rect(topleft=(24, 24))
+        self.screen.blit(indicator_label, indicator_rect)
+        if getattr(self, "current_night_call_path", None):
+            self._draw_mute_call_button(indicator_rect)
+        else:
+            self.call_mute_button_rect = pygame.Rect(0, 0, 0, 0)
 
         left_door_threats = [name for name, camera_id in positions.items() if camera_id == "door_left"]
         right_door_threats = [name for name, camera_id in positions.items() if camera_id == "door_right"]
@@ -485,10 +531,10 @@ class GameRenderingMixin:
 
         self.video_camere.update_hover(mouse_pos)
         self.system_panel.update_hover(mouse_pos)
-        self.video_camere.draw_overlay(self.screen)
-        self.system_panel.draw_overlay(self.screen, self.system_errors, self.system_reboots, now_ms)
-        self.system_panel.queue_trigger()
-        self.video_camere.queue_trigger()
+        self.video_camere.draw_overlay(self.screen, self)
+        self.system_panel.draw_overlay(self.screen, self.system_errors, self.system_reboots, now_ms, self)
+        self.system_panel.queue_trigger(self)
+        self.video_camere.queue_trigger(self)
         draw_graphic_elements(self.screen)
 
         if (not admin_mode) and now_ms < self.flashlight_repel_feedback_until:
