@@ -1,5 +1,6 @@
 import os
 import json
+import sys
 
 import pygame
 
@@ -148,14 +149,9 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.width = int(width)
         self.height = int(height)
         self.max_night = 5
-        self.progress_save_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "savegame.json",
-        )
-        self.settings_save_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "settings.json",
-        )
+        self.user_data_dir = self._get_user_data_dir()
+        self.progress_save_path = os.path.join(self.user_data_dir, "savegame.json")
+        self.settings_save_path = os.path.join(self.user_data_dir, "settings.json")
 
         self.display_mode = "windowed_borderless"
         self.display_mode_options = ["windowed", "windowed_borderless", "fullscreen"]
@@ -254,6 +250,12 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
             label_font=self.font_small,
             title_font=self.font_hour,
         )
+
+        # In bundled onefile builds, keep bundled camera_layout as defaults,
+        # then overlay user-customized layout from persistent storage if present.
+        user_layout_path = os.path.join(self.user_data_dir, "camera_layout.json")
+        self.video_camere._layout_config_path = user_layout_path
+        self.video_camere._load_layout_config()
 
         self.video_camere.set_trigger_rect(
             x=self.width - 92,
@@ -458,6 +460,20 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
 
         self._load_progress()
         self._load_menu_video()
+
+    def _get_user_data_dir(self):
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if not bool(getattr(sys, "frozen", False)):
+            return project_root
+
+        if os.name == "nt":
+            base_dir = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        else:
+            base_dir = os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
+
+        target_dir = os.path.join(base_dir, "gioco_scuola")
+        os.makedirs(target_dir, exist_ok=True)
+        return target_dir
 
     def _get_cursor_path_for_size(self, size):
         return os.path.join("assets", "images", f"cursor{int(size)}.png")
