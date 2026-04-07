@@ -39,6 +39,12 @@ class AudioManager:
             pygame.mixer.music.stop()
         self.current_music = None
 
+    def set_music_volume(self, volume):
+        if not self.enabled:
+            return
+        clamped = max(0.0, min(1.0, float(volume)))
+        pygame.mixer.music.set_volume(clamped)
+
     def pause_music(self):
         if not self.enabled:
             return

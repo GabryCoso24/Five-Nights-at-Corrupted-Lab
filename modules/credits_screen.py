@@ -121,6 +121,11 @@ def draw_credits_video(game):
         game.enter_menu(play_click=False)
         return
 
+    if getattr(game, "credits_video_audio_started", False):
+        base_volume = float(getattr(game, "credits_audio_base_volume", 1.0))
+        target_volume = base_volume * (1.0 - (max(0, min(255, fade_alpha)) / 255.0))
+        game.audio.set_music_volume(target_volume)
+
     game._draw_end_video_label(game.tr("menu.credits"), (180, 220, 255))
     skip_hint = game.font_small.render(game.tr("ui.press_e_skip"), True, (180, 220, 255))
     game.screen.blit(skip_hint, skip_hint.get_rect(bottomright=(game.width - 26, game.height - 24)))

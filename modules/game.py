@@ -11,8 +11,8 @@ from modules.game_assets import load_enemy_sprites, load_jumpscare_assets
 from modules.game_event_handlers import GameEventHandlersMixin
 from modules.game_flow import GameFlowMixin
 from modules.game_rendering import GameRenderingMixin
-from modules.orario import Orario
-from modules.startBackgroudMusic import AudioManager
+from modules.hours import Orario
+from modules.start_backgroud_music import AudioManager
 from modules.system_panel import SystemPanel
 
 
@@ -380,68 +380,10 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.credits_video_started_at = 0
         self.credits_video_last_frame_at = 0
         self.credits_video_frame_delay_ms = 33
+        self.credits_audio_base_volume = 1.0
         self.credits_roll_speed_px_s = 46
         self.credits_roll_end_delay_ms = 3200
-        self.credits_roll_script = [
-            {"type": "title", "text": "Five Nights at The Corrupted Lab"},
-            {"type": "subtitle", "text": "Titoli di coda"},
-            {"type": "space"},
-            {
-                "type": "header",
-                "text": "Direzione creativa e visione del progetto",
-            },
-            {
-                "type": "name",
-                "text": "Team Five Nights at Corrupted Lab",
-                "detail": "Il progetto e nato con l'obiettivo di costruire un'esperienza horror scolastica leggibile, tesa e giocabile anche in sessioni brevi. Ogni scelta su ritmo, atmosfera e interfaccia e stata fatta per mantenere alta la pressione senza perdere chiarezza.",
-            },
-            {"type": "space"},
-            {"type": "header", "text": "Sviluppo codice e logica di gioco"},
-            {
-                "type": "name",
-                "text": "Gabriele Bella",
-                "detail": "Ha definito l'architettura del codice separando rendering, flusso di gioco, input e sistemi. Ha implementato il loop principale, la progressione notturna, la gestione degli stati e la logica degli animatronics, bilanciando tempi di attacco, finestre di reazione e pressione crescente tra le notti.",
-            },
-            {
-                "type": "name",
-                "text": "Gameplay systems",
-                "detail": "Sotto la sua guida sono stati integrati torcia, pannello sistemi, gestione errori, trigger camera e sequenze di salto tra schermate, con particolare attenzione alla coerenza tra feedback audio-visivo e conseguenze di gioco.",
-            },
-            {"type": "space"},
-            {"type": "header", "text": "Selezione immagini e suoni"},
-            {
-                "type": "name",
-                "text": "Flavio Cosimo Cigna",
-                "detail": "Ha curato ricerca, selezione e organizzazione del materiale visivo e sonoro. Ha contribuito a costruire un'identita riconoscibile scegliendo sprite, sfondi, effetti e musiche in modo coerente con il tono del gioco, mantenendo leggibilita nelle scene piu cariche.",
-            },
-            {
-                "type": "name",
-                "text": "Direzione audio-visiva",
-                "detail": "Ha supportato la costruzione dell'atmosfera con una scelta mirata di transizioni, rumori ambientali e suoni di feedback, fondamentali per suggerire pericolo, movimento e urgenza senza interrompere il flusso del gameplay.",
-            },
-            {"type": "space"},
-            {"type": "header", "text": "Stesura credits finali"},
-            {
-                "type": "name",
-                "text": "Javeria Amin",
-                "detail": "Ha redatto, ordinato e armonizzato i testi dei crediti finali, valorizzando con chiarezza i ruoli del team e trasformando la chiusura del gioco in una parte narrativa coerente con il resto dell'esperienza.",
-            },
-            {
-                "type": "name",
-                "text": "Revisione e impaginazione",
-                "detail": "Ha lavorato su tono, leggibilita e ritmo dei testi per rendere i crediti scorrevoli, comprensibili e rispettosi del contributo di ogni membro, mantenendo un linguaggio lineare e accessibile.",
-            },
-            {"type": "space"},
-            {"type": "header", "text": "Ringraziamenti"},
-            {
-                "type": "name",
-                "text": "A chi ha testato il progetto",
-                "detail": "Un ringraziamento speciale a chi ha provato il gioco, segnalato problemi, dato suggerimenti e aiutato a rifinire difficolta, tempi e feedback. Ogni test ha contribuito a migliorare stabilita e qualita dell'esperienza finale.",
-            },
-            {"type": "space"},
-            {"type": "subtitle", "text": "Grazie per aver giocato"},
-            {"type": "subtitle", "text": "Ci vediamo alla prossima notte"},
-        ]
+        self.credits_roll_script = self._build_credits_script(self.language)
         self.menu_video_candidates = [
             os.path.join("assets", "video", "menu.mkv"),
             os.path.join("assets", "video", "menu.mp4"),

@@ -709,7 +709,7 @@ class GameFlowMixin:
             self.credits_video_audio_started = self.audio.play_music(
                 music_file=self.credits_video_path,
                 loop=False,
-                volume=1.0,
+                volume=float(getattr(self, "credits_audio_base_volume", 1.0)),
             )
 
         if not self.credits_video_audio_started:
@@ -719,10 +719,13 @@ class GameFlowMixin:
                 self.credits_video_audio_started = self.audio.play_music(
                     music_file=candidate,
                     loop=False,
-                    volume=1.0,
+                    volume=float(getattr(self, "credits_audio_base_volume", 1.0)),
                 )
                 if self.credits_video_audio_started:
                     break
+
+        if self.credits_video_audio_started:
+            self.audio.set_music_volume(float(getattr(self, "credits_audio_base_volume", 1.0)))
 
         self.state = "credits_video"
 
@@ -733,6 +736,7 @@ class GameFlowMixin:
             except Exception:
                 pass
         if self.credits_video_audio_started:
+            self.audio.set_music_volume(float(getattr(self, "credits_audio_base_volume", 1.0)))
             self.audio.stop_music()
         self.credits_video_cap = None
         self.credits_video_path = None
