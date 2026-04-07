@@ -509,7 +509,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
                 {"type": "header", "text": "Direzione creativa e visione del progetto"},
                 {
                     "type": "name",
-                    "text": "Team Gioco Scuola",
+                    "text": "Team Five Nights at Corrupted Lab",
                     "detail": "Il progetto e nato con l'obiettivo di costruire un'esperienza horror scolastica leggibile, tesa e giocabile anche in sessioni brevi. Ogni scelta su ritmo, atmosfera e interfaccia e stata fatta per mantenere alta la pressione senza perdere chiarezza.",
                 },
                 {"type": "space"},
@@ -540,7 +540,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
                 {"type": "header", "text": "Stesura credits finali"},
                 {
                     "type": "name",
-                    "text": "Javeria Amin",
+                    "text": "Javeeria Amin",
                     "detail": "Ha redatto, ordinato e armonizzato i testi dei crediti finali, valorizzando con chiarezza i ruoli del team e trasformando la chiusura del gioco in una parte narrativa coerente con il resto dell'esperienza.",
                 },
                 {
@@ -579,7 +579,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
             {"type": "header", "text": "Creative direction and project vision"},
             {
                 "type": "name",
-                "text": "Gioco Scuola Team",
+                "text": "Five Nights at Corrupted Lab Team",
                 "detail": "The project was designed to deliver a readable and tense school-horror experience, enjoyable even in short sessions. Every choice about rhythm, atmosphere and interface was made to keep pressure high without sacrificing clarity.",
             },
             {"type": "space"},
@@ -610,7 +610,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
             {"type": "header", "text": "Final credits writing"},
             {
                 "type": "name",
-                "text": "Javeria Amin",
+                "text": "Javeeria Amin",
                 "detail": "She wrote, organized and refined the final credit text, clearly highlighting team roles and turning the ending into a narrative moment aligned with the rest of the experience.",
             },
             {
