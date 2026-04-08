@@ -67,7 +67,9 @@ class GameRenderingMixin:
         if not hasattr(self, "_video_sync_cache"):
             self._video_sync_cache = {}
 
-        cache_key = id(capture)
+        # Include the playback start timestamp in the cache key to avoid
+        # stale frame reuse if Python recycles the same object id.
+        cache_key = (id(capture), int(started_at_ms))
         state = self._video_sync_cache.get(cache_key)
         if state is None:
             state = {
@@ -407,6 +409,16 @@ class GameRenderingMixin:
         hour_index = getattr(self.orologio, "hour_index", 0)
 
         watched_camera = self.video_camere.get_selected_camera_id() if self.video_camere.is_open else None
+        viewed_office_side = None
+        if (not admin_mode) and (not self.video_camere.is_open) and (not self.system_panel.is_open):
+            # Error-type at the office door should react only if the player is looking at that side.
+            left_threshold = int(self.camera.max_offset * 0.35)
+            right_threshold = int(self.camera.max_offset * 0.65)
+            if cam_x <= left_threshold:
+                viewed_office_side = "left"
+            elif cam_x >= right_threshold:
+                viewed_office_side = "right"
+
         player_can_defend = self.flashlight_ready or self.flashlight_active
         if not admin_mode:
             events = self.animatronics.update(
@@ -414,6 +426,7 @@ class GameRenderingMixin:
                 night_level=self.current_night,
                 hour_index=hour_index,
                 watched_camera=watched_camera,
+                viewed_office_side=viewed_office_side,
                 blocked_vent_cameras=self.blocked_vent_cameras,
                 player_can_defend=player_can_defend,
                 active_system_errors={name for name, active in self.system_errors.items() if active},
@@ -646,6 +659,11 @@ class GameRenderingMixin:
         self.defeat_video_last_frame_at = now_ms
 
         if frame_surface is None:
+            # Allow a brief startup grace period for decoder warm-up.
+            if now_ms - self.defeat_video_started_at < 550:
+                self.screen.fill((0, 0, 0))
+                self._draw_end_video_label("GAME OVER", (255, 90, 90))
+                return
             self.enter_menu(play_click=False)
             return
 
@@ -672,6 +690,11 @@ class GameRenderingMixin:
         self.victory_video_last_frame_at = now_ms
 
         if frame_surface is None:
+            # Allow a brief startup grace period for decoder warm-up.
+            if now_ms - self.victory_video_started_at < 550:
+                self.screen.fill((0, 0, 0))
+                self._draw_end_video_label(self.tr("ui.victory"), (120, 255, 150))
+                return
             self.enter_menu(play_click=False)
             return
 
@@ -700,6 +723,10 @@ class GameRenderingMixin:
         self.endgame_video_last_frame_at = now_ms
 
         if frame_surface is None:
+            if now_ms - self.endgame_video_started_at < 550:
+                self.screen.fill((0, 0, 0))
+                self._draw_end_video_label("ENDGAME", (255, 220, 120))
+                return
             self._start_credits_video()
             return
 

@@ -344,7 +344,10 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.flashlight_repel_sound = "assets/audio/switch_cam_sound.wav"
         self.flashlight_hit_sound = "assets/audio/control-shock.wav"
         self.current_night_call_path = None
+        self.pending_night_call_path = None
         self.current_night_call_muted = False
+        self.night_call_ringtone_loops = 2
+        self.night_call_ringtone_remaining_loops = 0
         self.call_mute_button_rect = pygame.Rect(0, 0, 0, 0)
         self.system_error_sound = "assets/audio/error.wav"
         self.vent_enter_sound = "assets/audio/vents.wav"

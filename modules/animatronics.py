@@ -77,13 +77,16 @@ class Animatronic:
 			2: 0.70,
 			3: 0.88,
 			4: 1.05,
-			5: 1.28,
+			5: 1.62,
 		}
 		return night_scale.get(max(1, night_level), 1.28)
 
 	def _schedule_next_move(self, now_ms: int, night_level: int, hour_index: int = 0) -> None:
 		# Later nights shorten the pause between movement attempts.
-		delay = max(700, self.step_cooldown_ms - 320 - (night_level * 220) - (hour_index * 90))
+		extra_night_pressure = 0
+		if night_level >= 5:
+			extra_night_pressure = 320
+		delay = max(650, self.step_cooldown_ms - 320 - (night_level * 220) - (hour_index * 90) - extra_night_pressure)
 		self.next_move_at = now_ms + delay
 
 	def stun(self, now_ms: int) -> None:
@@ -138,6 +141,15 @@ class Animatronic:
 
 		moved = rng.random() < chance
 		if moved:
+			# Lethal animatronics can occasionally step back to reposition and take alternative routes.
+			if (not self.can_trigger_error) and self.route_index > 0 and (not self.is_at_office_door()):
+				retreat_chance = min(0.22, 0.08 + (max(0, night_level - 2) * 0.03))
+				if rng.random() < retreat_chance:
+					self.route_index = max(0, self.route_index - 1)
+					self.door_entered_at = 0
+					self._schedule_next_move(now_ms, night_level, hour_index)
+					return True
+
 			extra_step_chance = min(0.78, 0.12 + (hour_pressure * 0.18) + (night_pressure * 0.10))
 			steps_to_take = 1
 			if rng.random() < extra_step_chance:
@@ -187,6 +199,8 @@ class Animatronic:
 
 		# Keep lethal attacks tense but readable: the player must have time to react after door arrival.
 		attack_delay = max(2200, self.attack_delay_ms - ((max(1, min(5, night_level)) - 1) * 120) - (hour_index * 80))
+		if night_level >= 5:
+			attack_delay = max(1800, attack_delay - 380)
 		return (now_ms - self.door_entered_at) >= attack_delay
 
 
@@ -462,13 +476,20 @@ class AnimatronicsManager:
 		animatronic.stunned_until = old_stunned
 		animatronic.door_entered_at = old_door_entered
 
-	def _maybe_dynamic_reroute(self, animatronic: Animatronic, side: str, now_ms: int) -> None:
+	def _maybe_dynamic_reroute(self, animatronic: Animatronic, side: str, now_ms: int, night_level: int = 1) -> None:
 		if not self.navigation_graph or animatronic.is_at_office_door():
 			return
 		last_at = int(self.last_dynamic_reroute_at.get(animatronic.name, 0) or 0)
 		if now_ms - last_at < self.dynamic_reroute_cooldown_ms:
 			return
-		if self.rng.random() > self.dynamic_reroute_chance:
+
+		is_lethal = not animatronic.can_trigger_error
+		night_level = max(1, int(night_level or 1))
+		reroute_chance = float(self.dynamic_reroute_chance)
+		if is_lethal and night_level >= 4:
+			reroute_chance = 0.42 if night_level == 4 else 0.58
+
+		if self.rng.random() > reroute_chance:
 			return
 		self._reroute_from_current(animatronic, side)
 		self.last_dynamic_reroute_at[animatronic.name] = now_ms
@@ -525,6 +546,7 @@ class AnimatronicsManager:
 		night_level: int,
 		hour_index: int,
 		watched_camera: Optional[str],
+		viewed_office_side: Optional[str] = None,
 		blocked_vent_cameras: Optional[Set[str]] = None,
 		player_can_defend: bool = True,
 		active_system_errors: Optional[Set[str]] = None,
@@ -652,7 +674,7 @@ class AnimatronicsManager:
 			else:
 				animatronic.blocked_vent_since_at = 0
 			if side:
-				self._maybe_dynamic_reroute(animatronic, side, now_ms)
+				self._maybe_dynamic_reroute(animatronic, side, now_ms, night_level=night_level)
 
 			# Error-type animatronics can't move or attack until they become visible
 			if animatronic.can_trigger_error and not self._is_animatronic_visible(animatronic.name, now_ms):
@@ -693,12 +715,16 @@ class AnimatronicsManager:
 					and animatronic.is_visible_on_cameras()
 					and watched_camera == animatronic.current_camera
 				)
+				door_side = "left" if animatronic.current_camera == "door_left" else ("right" if animatronic.current_camera == "door_right" else None)
+				is_watching_office_side = door_side is not None and viewed_office_side == door_side
+				night_five = night_level >= 5
 
-				if animatronic.is_at_office_door() and now_ms >= animatronic.next_error_at:
+				if animatronic.is_at_office_door() and is_watching_office_side and now_ms >= animatronic.next_error_at:
 					available_error_types = [e for e in ("camera", "ventilation", "flashlight") if e not in active_error_set]
 					if available_error_types:
 						# At the office door, error-type animatronics must create concrete pressure.
-						count = 2 if (len(available_error_types) >= 2 and self.rng.random() < 0.28) else 1
+						door_double_chance = 0.28 if not night_five else 0.62
+						count = 2 if (len(available_error_types) >= 2 and self.rng.random() < door_double_chance) else 1
 						count = min(count, len(available_error_types))
 						triggered_errors = self.rng.sample(available_error_types, k=count)
 						animatronic.stun(now_ms)
@@ -706,7 +732,7 @@ class AnimatronicsManager:
 						animatronic.watched_since_at = 0
 						animatronic.route_index = max(0, animatronic.route_index - 1)
 						animatronic.next_move_at = max(animatronic.next_move_at, now_ms + 1200)
-						animatronic.next_error_at = now_ms + 4200
+						animatronic.next_error_at = now_ms + (2800 if night_five else 4200)
 						active_error_set.update(triggered_errors)
 						events.append({"type": "system_error", "name": animatronic.name, "errors": triggered_errors})
 						continue
@@ -721,12 +747,12 @@ class AnimatronicsManager:
 					animatronic.watched_since_at > 0
 					and (now_ms - animatronic.watched_since_at) >= 900
 					and now_ms >= animatronic.next_error_at
-					and self.rng.random() < min(0.78, 0.30 + animatronic.error_trigger_chance)
+					and self.rng.random() < (min(0.88, 0.30 + animatronic.error_trigger_chance) if night_five else min(0.78, 0.30 + animatronic.error_trigger_chance))
 				):
 					available_error_types = [e for e in ("camera", "ventilation", "flashlight") if e not in active_error_set]
 					if not available_error_types:
 						animatronic.watched_since_at = 0
-						animatronic.next_error_at = now_ms + 4200
+						animatronic.next_error_at = now_ms + (3000 if night_five else 4200)
 						continue
 
 					weights_by_count = {1: 0.82, 2: 0.15, 3: 0.03}
@@ -743,7 +769,7 @@ class AnimatronicsManager:
 					triggered_errors = self.rng.sample(available_error_types, k=count)
 					animatronic.stun(now_ms)
 					animatronic.watched_since_at = 0
-					animatronic.next_error_at = now_ms + 5200
+					animatronic.next_error_at = now_ms + (3400 if night_five else 5200)
 					active_error_set.update(triggered_errors)
 					events.append({"type": "system_error", "name": animatronic.name, "errors": triggered_errors})
 					continue

@@ -13,6 +13,10 @@ except Exception:
 
 
 class GameFlowMixin:
+    def _resolve_night_ringtone_path(self):
+        ringtone_path = os.path.join("assets", "audio", "calls", "ringtone.wav")
+        return ringtone_path if os.path.isfile(ringtone_path) else None
+
     def _resolve_night_call_path(self, night_value=None):
         night_index = self._clamp_night(night_value if night_value is not None else getattr(self, "current_night", 1))
         language = str(getattr(self, "language", "en") or "en").strip().lower()
@@ -26,21 +30,29 @@ class GameFlowMixin:
                     return candidate_path
         return None
 
-    def _stop_current_night_call(self):
+    def _stop_current_night_call(self, reset_mute_state=True):
         current_call = getattr(self, "current_night_call_path", None)
         if current_call:
             self.audio.stop_sound(current_call)
         self.current_night_call_path = None
-        self.current_night_call_muted = False
+        self.pending_night_call_path = None
+        self.night_call_ringtone_remaining_loops = 0
+        if reset_mute_state:
+            self.current_night_call_muted = False
         if hasattr(self, "call_mute_button_rect"):
             self.call_mute_button_rect = pygame.Rect(0, 0, 0, 0)
 
     def _mute_current_night_call(self):
-        current_call = getattr(self, "current_night_call_path", None)
-        if not current_call or getattr(self, "current_night_call_muted", False):
+        if getattr(self, "current_night_call_muted", False):
             return False
 
-        self._stop_current_night_call()
+        current_call = getattr(self, "current_night_call_path", None)
+        pending_call = getattr(self, "pending_night_call_path", None)
+        if not current_call and not pending_call:
+            return False
+
+        self.current_night_call_muted = True
+        self._stop_current_night_call(reset_mute_state=False)
         return True
 
     def _play_night_call(self, night_value=None):
@@ -50,10 +62,23 @@ class GameFlowMixin:
         if not call_path:
             return False
 
+        self.pending_night_call_path = call_path
+        self.current_night_call_muted = False
+
+        ringtone_path = self._resolve_night_ringtone_path()
+        ringtone_loops = max(0, int(getattr(self, "night_call_ringtone_loops", 2)))
+        if ringtone_path and ringtone_loops > 0:
+            played_ringtone = self.audio.play_sound(ringtone_path, volume=0.95)
+            if played_ringtone:
+                self.current_night_call_path = ringtone_path
+                self.night_call_ringtone_remaining_loops = max(0, ringtone_loops - 1)
+                return True
+
         played = self.audio.play_sound(call_path, volume=0.95)
         if played:
             self.current_night_call_path = call_path
-            self.current_night_call_muted = False
+            self.pending_night_call_path = None
+            self.night_call_ringtone_remaining_loops = 0
         return played
 
     def _sync_current_night_call(self):
@@ -62,6 +87,24 @@ class GameFlowMixin:
             return False
         if self.audio.is_sound_playing(current_call):
             return True
+
+        ringtone_path = self._resolve_night_ringtone_path()
+        pending_call = getattr(self, "pending_night_call_path", None)
+        if ringtone_path and current_call == ringtone_path and pending_call and not getattr(self, "current_night_call_muted", False):
+            remaining_loops = int(getattr(self, "night_call_ringtone_remaining_loops", 0) or 0)
+            if remaining_loops > 0:
+                replayed = self.audio.play_sound(ringtone_path, volume=0.95)
+                if replayed:
+                    self.current_night_call_path = ringtone_path
+                    self.night_call_ringtone_remaining_loops = remaining_loops - 1
+                    return True
+
+            played_call = self.audio.play_sound(pending_call, volume=0.95)
+            if played_call:
+                self.current_night_call_path = pending_call
+                self.pending_night_call_path = None
+                self.night_call_ringtone_remaining_loops = 0
+                return True
 
         self._stop_current_night_call()
         return False

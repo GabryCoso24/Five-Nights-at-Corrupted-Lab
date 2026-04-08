@@ -218,6 +218,9 @@
     "cam9": [
       "cam11"
     ],
+    "cam11": [
+      "cam12"
+    ],
     "cam7": [
       "cam6",
       "cam12"
@@ -232,9 +235,14 @@
       "cam6"
     ],
     "cam12": [
-      "cam14"
+      "cam1"
     ],
-    "cam14": [],
+    "cam14": [
+      "cam15"
+    ],
+    "cam15": [
+      "office_right"
+    ],
     "cam1": [
       "office_left"
     ],
@@ -272,6 +280,6 @@
   ],
   "office_targets": {
     "left": "cam1",
-    "right": "cam14"
+    "right": "office_right"
   }
 }

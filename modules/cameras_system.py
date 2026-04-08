@@ -908,16 +908,36 @@ class VideoCamere:
 
     def build_routes_by_side(self):
         left_target = self._office_targets.get("left", "cam1")
-        right_target = self._office_targets.get("right", "cam14")
+        right_target = self._office_targets.get("right", "office_right")
         left_path = self._find_path("cam10", left_target, self._combined_graph())
         right_path = self._find_path("cam10", right_target, self._combined_graph())
 
-        fallback_left = ["cam10", "cam9", "cam7", "cam6", "cam1"]
-        fallback_right = ["cam10", "cam8", "cam12", "cam14"]
+        fallback_left = ["cam10", "cam9", "cam11", "cam12", "cam1"]
+        fallback_right = ["cam10", "cam8", "cam5", "cam3", "cam2", "cam15", "office_right"]
 
         left_route = (left_path if left_path else fallback_left) + ["door_left"]
         right_route = (right_path if right_path else fallback_right) + ["door_right"]
         return {"left": left_route, "right": right_route}
+
+    def _ensure_priority_route_edges(self):
+        required_edges = {
+            "cam9": ["cam11"],
+            "cam7": ["cam12"],
+            "cam2": ["cam15"],
+            "cam11": ["cam12"],
+            "cam12": ["cam1"],
+            "cam14": ["cam15"],
+            "cam15": ["office_right"],
+        }
+
+        for src, targets in required_edges.items():
+            current_targets = self._camera_connections.setdefault(src, [])
+            for target in targets:
+                if target not in current_targets:
+                    current_targets.append(target)
+
+        self._office_targets["left"] = self._office_targets.get("left", "cam1") or "cam1"
+        self._office_targets["right"] = "office_right"
 
     def build_navigation_graph(self):
         return self._combined_graph()
@@ -1067,6 +1087,7 @@ class VideoCamere:
         )
         self._vent_closure_edge_ids.add("cam15->office_right")
         self._office_targets.update(payload.get("office_targets", {}))
+        self._ensure_priority_route_edges()
 
     def save_layout_config(self):
         payload = {
