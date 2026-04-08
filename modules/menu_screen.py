@@ -1,3 +1,5 @@
+﻿"""Rendering del menu principale, con pulsanti, sfondo animato e feedback visivo."""
+
 import random
 
 import pygame
@@ -6,6 +8,7 @@ from modules.ui_manager import add_graphic_element, draw_graphic_elements
 
 
 def _queue_button(game, rect, text):
+    """Aggiunge un pulsante alla coda grafica, cambiando colore quando il mouse lo sta puntando."""
     hovered = rect.collidepoint(pygame.mouse.get_pos())
     base_fill = (92, 138, 46, 238)
     hover_fill = (122, 176, 66, 252)
@@ -25,6 +28,7 @@ def _queue_button(game, rect, text):
 
 
 def draw_menu(game):
+    """Disegna il menu principale, aggiorna l'eventuale video di sfondo e sovrappone l'interfaccia."""
     now_ms = pygame.time.get_ticks()
     game.screen.blit(game.menu_background, (0, 0))
 
@@ -80,3 +84,5 @@ def draw_menu(game):
         err_label = game.font_small.render(game.error_message, True, (255, 60, 60))
         err_rect = err_label.get_rect(center=(game.width // 2, game.height - 60))
         game.screen.blit(err_label, err_rect)
+
+

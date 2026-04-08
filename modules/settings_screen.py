@@ -1,7 +1,10 @@
+"""Rendering della schermata impostazioni e dei controlli per schermo, cursore e lingua."""
+
 import pygame
 
 
 def _draw_section_title(game, panel, row_buttons, text, color):
+    """Disegna il titolo di una sezione sopra il gruppo di bottoni corrispondente."""
     if not row_buttons:
         return
     row_top = min(rect.top for rect in row_buttons.values())
@@ -10,6 +13,7 @@ def _draw_section_title(game, panel, row_buttons, text, color):
 
 
 def _render_fitted_label(game, text, max_width, selected):
+    """Adatta il testo al bottone: prima cambia font, poi riduce la scala se lo spazio non basta."""
     base_color = (18, 32, 14) if selected else (218, 232, 212)
     label = game.font_small.render(text, True, base_color)
     if label.get_width() <= max_width:
@@ -26,6 +30,7 @@ def _render_fitted_label(game, text, max_width, selected):
 
 
 def draw_settings(game):
+    """Disegna il pannello impostazioni completo con modalità finestra, risoluzione, cursore e lingua."""
     game.screen.blit(game.menu_background, (0, 0))
 
     overlay = pygame.Surface((game.width, game.height), pygame.SRCALPHA)
@@ -103,3 +108,4 @@ def draw_settings(game):
     pygame.draw.rect(game.screen, (222, 246, 190), back, width=2, border_radius=10)
     back_label = game.font_small.render(game.tr("settings.back"), True, (16, 30, 12))
     game.screen.blit(back_label, back_label.get_rect(center=back.center))
+

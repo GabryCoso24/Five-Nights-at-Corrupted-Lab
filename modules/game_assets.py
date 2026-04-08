@@ -1,9 +1,12 @@
+﻿"""Caricamento e normalizzazione di sprite e jumpscare, con nomi canonici per i personaggi."""
+
 import os
 
 import pygame
 
 
 def _canonical_name_from_stem(stem):
+    """Riconosce il nome canonico di un personaggio partendo dal nome file dell'asset."""
     keyword_to_canonical = {
         "chugginton": "Chugginton",
         "linux": "Linux",
@@ -18,6 +21,7 @@ def _canonical_name_from_stem(stem):
 
 
 def load_enemy_sprites(folder=None):
+    """Carica le immagini dei nemici e le espone sia col nome file sia con il nome canonico, quando disponibile."""
     if folder is None:
         folder = os.path.join("assets", "images", "personaggi_cattivi")
 
@@ -58,6 +62,7 @@ def load_enemy_sprites(folder=None):
 
 
 def load_jumpscare_assets(folder=None):
+    """Raccoglie video, audio e frame di ogni jumpscare in una struttura pronta per il motore di gioco."""
     if folder is None:
         folder = os.path.join("assets", "jumpscares")
 
@@ -122,3 +127,5 @@ def load_jumpscare_assets(folder=None):
             }
 
     return jumpscares
+
+

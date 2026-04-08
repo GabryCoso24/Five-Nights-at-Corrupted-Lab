@@ -1,3 +1,5 @@
+﻿"""Smistamento degli input utente tra menu, impostazioni, gameplay e schermate finali."""
+
 import pygame
 
 from modules.menu_settings_handlers import handle_menu_events as handle_menu_events_module
@@ -5,7 +7,9 @@ from modules.menu_settings_handlers import handle_settings_events as handle_sett
 
 
 class GameEventHandlersMixin:
+    """Raccoglie la logica che smista gli eventi in base allo stato corrente del gioco."""
     def handle_event(self, event):
+        """Gestisce gli input globali e poi li inoltra allo stato di gioco attivo."""
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_F11:
                 self.toggle_fullscreen()
@@ -67,12 +71,15 @@ class GameEventHandlersMixin:
             self.handle_game_events(event)
 
     def handle_menu_events(self, event):
+        """Passa gli eventi alla logica del menu principale."""
         handle_menu_events_module(self, event)
 
     def handle_settings_events(self, event):
+        """Passa gli eventi alla schermata impostazioni."""
         handle_settings_events_module(self, event)
 
     def handle_game_events(self, event):
+        """Gestisce i controlli della notte: sistema, telecamere, torcia e shortcut di uscita."""
         handled, action = self.system_panel.handle_event(event, lock_open=self._is_any_rebooting())
         if handled:
             if action:
@@ -101,3 +108,5 @@ class GameEventHandlersMixin:
             self.enter_menu(play_click=True)
         elif event.key == pygame.K_ESCAPE:
             pygame.event.post(pygame.event.Event(pygame.QUIT))
+
+

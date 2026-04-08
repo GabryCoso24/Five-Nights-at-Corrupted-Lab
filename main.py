@@ -1,3 +1,5 @@
+﻿"""Avvio dell'app: legge le preferenze finestra, applica le impostazioni Windows e avvia il gioco."""
+
 import os
 import sys
 import json
@@ -9,6 +11,7 @@ from modules.game import Game
 
 
 def _load_window_appearance_settings():
+    """Legge tema barra titolo, icone e AppUserModelID da settings.json, con valori di ripiego se manca tutto."""
     settings_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings.json")
     defaults = {
         "titlebar_theme": "dark",
@@ -61,6 +64,7 @@ def _load_window_appearance_settings():
 
 
 def _set_windows_app_id(app_id):
+    """Imposta l'AppUserModelID su Windows per icona e raggruppamento taskbar."""
     if os.name != "nt":
         return
 
@@ -71,6 +75,7 @@ def _set_windows_app_id(app_id):
 
 
 def _set_windows_dpi_awareness():
+    """Abilita la DPI awareness per evitare blur/scaling errato su monitor HiDPI."""
     if os.name != "nt":
         return
 
@@ -84,6 +89,7 @@ def _set_windows_dpi_awareness():
 
 
 def _apply_window_icon(icon_path):
+    """Carica e applica l'icona della finestra Pygame se disponibile."""
     if not icon_path:
         return
     if not os.path.isfile(icon_path):
@@ -97,6 +103,7 @@ def _apply_window_icon(icon_path):
 
 
 def _apply_windows_titlebar_theme(theme):
+    """Forza tema chiaro/scuro della title bar usando API DWM su Windows."""
     if os.name != "nt":
         return
 
@@ -124,6 +131,7 @@ def _apply_windows_titlebar_theme(theme):
 
 
 def _apply_windows_taskbar_icon(icon_path):
+    """Imposta l'icona taskbar tramite API Win32 (formato .ico)."""
     if os.name != "nt":
         return
     if not icon_path or not os.path.isfile(icon_path):
@@ -164,7 +172,8 @@ def _apply_windows_taskbar_icon(icon_path):
 
 
 def main():
-    # In PyInstaller --onefile, bundled files are unpacked in _MEIPASS.
+    """Prepara l'ambiente grafico, imposta icone e tema di Windows, poi avvia il loop principale."""
+    # Quando l'app viene impacchettata con PyInstaller, i file vengono estratti in _MEIPASS.
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         os.chdir(sys._MEIPASS)
 
@@ -183,3 +192,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

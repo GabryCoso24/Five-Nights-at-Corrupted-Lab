@@ -1,3 +1,5 @@
+"""Logica AI degli animatronic: percorsi, pressione di gioco, attacchi e reazioni ai sistemi del player."""
+
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set
 import random
@@ -6,6 +8,7 @@ from collections import deque
 
 @dataclass
 class Animatronic:
+	"""Descrive lo stato runtime di un animatronic: dove si trova, quando si muove e quando può attaccare."""
 	name: str
 	route: List[str]
 	base_move_chance: float = 0.12
@@ -17,11 +20,13 @@ class Animatronic:
 	error_trigger_chance: float = 0.55
 
 	def __post_init__(self):
+		"""Valida la route iniziale e porta l'istanza in stato pulito."""
 		if not self.route:
 			raise ValueError(f"La route di {self.name} non puo essere vuota")
 		self.reset_state()
 
 	def reset_state(self) -> None:
+		"""Azzera tutti i timer e riporta l'animatronic all'inizio della route."""
 		self.route_index = 0
 		self.next_move_at = 0
 		self.stunned_until = 0
@@ -31,12 +36,14 @@ class Animatronic:
 		self.blocked_vent_since_at = 0
 
 	def set_route(self, route: List[str]) -> None:
+		"""Sostituisce il percorso corrente e resetta lo stato dipendente dal path."""
 		if not route:
 			raise ValueError(f"La route di {self.name} non puo essere vuota")
 		self.route = route
 		self.reset_state()
 
 	def shift_timers(self, delta_ms: int) -> None:
+		"""Sposta in avanti i timer interni, utile dopo pause o resume di partita."""
 		if delta_ms <= 0:
 			return
 		self.next_move_at += delta_ms
@@ -48,30 +55,37 @@ class Animatronic:
 
 	@property
 	def current_camera(self) -> str:
+		"""Restituisce il nodo camera attuale in base a route e route_index."""
 		return self.route[self.route_index]
 
 	def is_at_office_door(self) -> bool:
+		"""True quando il nodo corrente e una porta dell'ufficio."""
 		return self.current_camera.startswith("door")
 
 	def is_near_office_door(self) -> bool:
 		# Near door means one step before the final "door" node.
+		"""True quando manca al massimo uno step alla porta finale."""
 		if len(self.route) < 2:
 			return False
 		return self.route_index >= len(self.route) - 2
 
 	def is_visible_on_cameras(self) -> bool:
+		"""Indica se deve apparire sui monitor (non visibile quando e gia alla porta)."""
 		return not self.is_at_office_door()
 
 	def peek_next_camera(self) -> Optional[str]:
+		"""Ritorna il prossimo nodo previsto senza avanzare la posizione."""
 		if self.route_index >= len(self.route) - 1:
 			return None
 		return self.route[self.route_index + 1]
 
 	def _hour_pressure(self, hour_index: int) -> float:
+		"""Restituisce quanto l'ora corrente della notte aumenta la pressione dell'animatronic."""
 		hour_multipliers = [0.55, 0.72, 0.88, 1.02, 1.16, 1.30]
 		return hour_multipliers[max(0, min(len(hour_multipliers) - 1, hour_index))]
 
 	def _night_pressure(self, night_level: int) -> float:
+		"""Restituisce quanto la notte corrente rende l'animatronic più aggressivo."""
 		night_scale = {
 			1: 0.48,
 			2: 0.70,
@@ -82,7 +96,8 @@ class Animatronic:
 		return night_scale.get(max(1, night_level), 1.28)
 
 	def _schedule_next_move(self, now_ms: int, night_level: int, hour_index: int = 0) -> None:
-		# Later nights shorten the pause between movement attempts.
+		# Le notti alte riducono il tempo tra un tentativo di movimento e il successivo.
+		"""Imposta il timestamp del prossimo tentativo di avanzamento."""
 		extra_night_pressure = 0
 		if night_level >= 5:
 			extra_night_pressure = 320
@@ -90,10 +105,12 @@ class Animatronic:
 		self.next_move_at = now_ms + delay
 
 	def stun(self, now_ms: int) -> None:
+		"""Blocca temporaneamente l'animatronic prolungando la finestra di stun."""
 		self.stunned_until = max(self.stunned_until, now_ms + self.stun_duration_ms)
 
 	def repel_with_flashlight(self, now_ms: int) -> bool:
-		# Error-type animatronics are not repelled by flashlight by design.
+		# Gli animatronic che generano errori non vengono respinti dalla torcia per scelta di design.
+		"""Gestisce il colpo di torcia: arretra, stunna e ritarda il prossimo passo."""
 		if self.can_trigger_error:
 			return False
 
@@ -125,6 +142,7 @@ class Animatronic:
 		watched_camera: Optional[str] = None,
 		blocked_edges: Optional[Set[str]] = None,
 	) -> bool:
+		"""Prova ad avanzare lungo il percorso tenendo conto di ora, notte, camera osservata e blocchi."""
 		if now_ms < self.next_move_at or now_ms < self.stunned_until:
 			return False
 
@@ -182,6 +200,7 @@ class Animatronic:
 		return moved
 
 	def should_jumpscare(self, now_ms: int, player_can_defend: bool = True, hour_index: int = 0, night_level: int = 1) -> bool:
+		"""Decide se l'animatronic puo eseguire il jumpscare in questo frame."""
 		if not self.is_at_office_door():
 			return False
 		if hour_index < 1:
@@ -205,7 +224,9 @@ class Animatronic:
 
 
 class AnimatronicsManager:
+	"""Coordina tutti gli animatronic, route dinamiche, eventi e regole di bilanciamento."""
 	def __init__(self, animatronics: List[Animatronic], routes_by_side: Dict[str, List[str]], seed: Optional[int] = None):
+		"""Inizializza roster, RNG, grafo di navigazione e cooldown di pressione ai lati."""
 		self.rng = random.Random(seed)
 		self.animatronics: Dict[str, Animatronic] = {a.name: a for a in animatronics}
 		self.routes_by_side = routes_by_side
@@ -220,10 +241,12 @@ class AnimatronicsManager:
 		self.dynamic_reroute_chance: float = 0.26
 
 	def _active_names_for_night(self, night_level: int) -> List[str]:
+		"""Seleziona quanti animatronic sono attivi in base alla difficolta della notte."""
 		active_count = max(1, min(len(self.roster_order), night_level))
 		return self.roster_order[:active_count]
 
 	def _assign_random_routes(self) -> None:
+		"""Assegna lato e route iniziale a ogni animatronic con una piccola varianza casuale."""
 		names = list(self.animatronics.keys())
 		self.rng.shuffle(names)
 
@@ -246,6 +269,7 @@ class AnimatronicsManager:
 			self.animatronics[name].set_route(route)
 
 	def _pick_random_spawn_node(self, side: str) -> str:
+		"""Sceglie un nodo di spawn coerente col lato, preferendo partenze non troppo vicine."""
 		primary_targets = {"cam1", "office_left"} if side == "left" else {"cam14", "office_right"}
 		dist_map = self._reverse_distances(primary_targets)
 		if not dist_map:
@@ -274,6 +298,7 @@ class AnimatronicsManager:
 		return chosen
 
 	def _camera_number(self, node_id: str) -> Optional[int]:
+		"""Estrae il numero da un id camera (es. cam12 -> 12), altrimenti None."""
 		if not isinstance(node_id, str) or not node_id.startswith("cam"):
 			return None
 		try:
@@ -282,6 +307,7 @@ class AnimatronicsManager:
 			return None
 
 	def _is_reasonable_camera_edge(self, src: str, dst: str) -> bool:
+		"""Filtra archi improbabili per mantenere percorsi leggibili e bilanciati."""
 		if not isinstance(src, str) or not isinstance(dst, str):
 			return False
 		if src.startswith("door") or dst.startswith("door") or src.startswith("office") or dst.startswith("office"):
@@ -298,6 +324,7 @@ class AnimatronicsManager:
 		return abs(src_num - dst_num) <= 2
 
 	def set_navigation_graph(self, graph: Dict[str, List[str]]) -> None:
+		"""Normalizza e valida il grafo di navigazione usato dal pathfinding."""
 		normalized = {}
 		for src, targets in (graph or {}).items():
 			if not isinstance(targets, list):
@@ -313,6 +340,7 @@ class AnimatronicsManager:
 		self.navigation_graph = normalized
 
 	def _reverse_distances(self, target_nodes: Set[str]) -> Dict[str, int]:
+		"""Calcola distanza minima verso target usando BFS sul grafo invertito."""
 		reverse: Dict[str, List[str]] = {}
 		for src, targets in self.navigation_graph.items():
 			for dst in targets:
@@ -334,6 +362,7 @@ class AnimatronicsManager:
 		return dist
 
 	def _find_shortest_path_with_blocks(self, start_node: str, target_nodes: Set[str], blocked_nodes: Optional[Set[str]] = None) -> List[str]:
+		"""Trova il path piu corto evitando nodi bloccati (es. ventole chiuse/occupate)."""
 		blocked = set(blocked_nodes or set())
 		if start_node in blocked:
 			return []
@@ -354,11 +383,13 @@ class AnimatronicsManager:
 		return []
 
 	def _build_route_with_choices(self, start_node: str, side: str, avoid_nodes: Optional[Set[str]] = None) -> List[str]:
+		"""Costruisce una route verso la porta con variazioni casuali ma coerenti."""
 		blocked_nodes = set(avoid_nodes or [])
 		primary_targets = {"cam1", "office_left"} if side == "left" else {"cam14", "office_right"}
 		primary_dist = self._reverse_distances(primary_targets)
 
 		def _stochastic_walk(target_nodes: Set[str], dist_map: Dict[str, int]) -> List[str]:
+			"""Camminata pseudo-greedy: tende al target ma concede deviazioni controllate."""
 			if start_node in blocked_nodes or start_node not in dist_map:
 				return []
 
@@ -420,6 +451,7 @@ class AnimatronicsManager:
 		return path
 
 	def reset(self) -> None:
+		"""Reimposta la logica prevista dal modulo."""
 		self._assign_random_routes()
 		self.visibility_enabled_at.clear()
 		self.last_dynamic_reroute_at.clear()
@@ -440,12 +472,14 @@ class AnimatronicsManager:
 			self.visibility_enabled_at[name] = base_visibility_time + name_offset_ms
 
 	def shift_timers(self, delta_ms: int) -> None:
+		"""Propaga lo shift temporale a tutti gli animatronic gestiti dal manager."""
 		if delta_ms <= 0:
 			return
 		for animatronic in self.animatronics.values():
 			animatronic.shift_timers(delta_ms)
 
 	def set_routes_by_side(self, routes_by_side: Dict[str, List[str]]) -> None:
+		"""Aggiorna i percorsi base sinistra/destra e resetta il sistema."""
 		left_route = list(routes_by_side.get("left", []))
 		right_route = list(routes_by_side.get("right", []))
 		if not left_route or not right_route:
@@ -457,6 +491,7 @@ class AnimatronicsManager:
 		self.reset()
 
 	def _reroute_from_current(self, animatronic: Animatronic, side: str) -> None:
+		"""Ricalcola route partendo dalla camera attuale mantenendo timer correnti."""
 		if not self.navigation_graph:
 			return
 		if animatronic.is_at_office_door():
@@ -477,6 +512,7 @@ class AnimatronicsManager:
 		animatronic.door_entered_at = old_door_entered
 
 	def _maybe_dynamic_reroute(self, animatronic: Animatronic, side: str, now_ms: int, night_level: int = 1) -> None:
+		"""Valuta se spostare un animatronic su un percorso alternativo e applica il cambio se conviene."""
 		if not self.navigation_graph or animatronic.is_at_office_door():
 			return
 		last_at = int(self.last_dynamic_reroute_at.get(animatronic.name, 0) or 0)
@@ -495,6 +531,7 @@ class AnimatronicsManager:
 		self.last_dynamic_reroute_at[animatronic.name] = now_ms
 
 	def _route_side(self, animatronic: Animatronic) -> str:
+		"""Determina il lato offensivo attuale (left/right) dell'animatronic."""
 		if animatronic.route and animatronic.route[-1] == "door_left":
 			return "left"
 		if animatronic.route and animatronic.route[-1] == "door_right":
@@ -502,15 +539,18 @@ class AnimatronicsManager:
 		return self.route_side_by_name.get(animatronic.name, "right")
 
 	def _set_side_attack_cooldown(self, side: str, now_ms: int, extra_ms: int = 0) -> None:
+		"""Imposta una finestra di cooldown per evitare stack di attacchi sullo stesso lato."""
 		if side not in self.side_attack_cooldown_until:
 			return
 		until = now_ms + max(0, int(self.side_attack_cooldown_ms + extra_ms))
 		self.side_attack_cooldown_until[side] = max(int(self.side_attack_cooldown_until.get(side, 0) or 0), until)
 
 	def _is_side_in_attack_cooldown(self, side: str, now_ms: int) -> bool:
+		"""Controlla se il lato e temporaneamente protetto da nuovi assalti ravvicinati."""
 		return now_ms < int(self.side_attack_cooldown_until.get(side, 0) or 0)
 
 	def _force_flashlight_retreat_route(self, animatronic: Animatronic, side: str, now_ms: int) -> None:
+		"""Dopo la torcia, forza una route di arretramento per rendere il feedback evidente."""
 		if not self.navigation_graph:
 			return
 
@@ -551,6 +591,7 @@ class AnimatronicsManager:
 		player_can_defend: bool = True,
 		active_system_errors: Optional[Set[str]] = None,
 	) -> List[dict]:
+		"""Esegue un tick AI: movimento, errori di sistema, collisioni lato e jumpscare."""
 		events: List[dict] = []
 		active_error_set = set(active_system_errors or set())
 		active_names = set(self._active_names_for_night(night_level))
@@ -787,6 +828,7 @@ class AnimatronicsManager:
 		return events
 
 	def on_flashlight(self, now_ms: int, target_names: Optional[List[str]] = None) -> List[str]:
+		"""Applica effetto torcia ai bersagli e ritorna i nomi degli animatronic respinti."""
 		stunned: List[str] = []
 		target_set = set(target_names) if target_names is not None else None
 		for animatronic in self.animatronics.values():
@@ -801,6 +843,7 @@ class AnimatronicsManager:
 		return stunned
 
 	def on_error_jumpscare_finished(self, now_ms: int, target_name: Optional[str] = None) -> None:
+		"""Riposiziona gli animatronic non letali dopo il loro jumpscare tecnico."""
 		for animatronic in self.animatronics.values():
 			if not animatronic.can_trigger_error:
 				continue
@@ -816,6 +859,7 @@ class AnimatronicsManager:
 			animatronic.next_error_at = max(animatronic.next_error_at, now_ms + 4200)
 
 	def get_cameras_with_presence(self, now_ms: int = 0) -> List[str]:
+		"""Elenca le camere attualmente occupate da animatronic visibili al player."""
 		cams: List[str] = []
 		for name, animatronic in self.animatronics.items():
 			if not animatronic.is_visible_on_cameras():
@@ -825,6 +869,7 @@ class AnimatronicsManager:
 		return cams
 
 	def get_positions(self, now_ms: int = 0) -> Dict[str, str]:
+		"""Restituisce mappa nome->camera per gli animatronic visibili."""
 		result = {}
 		for name, a in self.animatronics.items():
 			if self._is_animatronic_visible(name, now_ms):
@@ -842,6 +887,7 @@ class AnimatronicsManager:
 
 
 def build_default_manager() -> AnimatronicsManager:
+	"""Factory con roster default e route iniziali usate dalla partita standard."""
 	routes_by_side = {
 		"left": ["cam10", "cam9", "cam7", "cam6", "cam1", "door_left"],
 		"right": ["cam10", "cam8", "cam12", "cam14", "door_right"],
@@ -855,3 +901,4 @@ def build_default_manager() -> AnimatronicsManager:
 	manager = AnimatronicsManager(roster, routes_by_side=routes_by_side)
 	manager.reset()
 	return manager
+

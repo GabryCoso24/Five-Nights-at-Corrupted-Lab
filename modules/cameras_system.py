@@ -1,3 +1,5 @@
+﻿"""Sistema telecamere: gestione mappe, connessioni, blocchi dei condotti e logica di routing."""
+
 import os
 import random
 import re
@@ -10,7 +12,9 @@ from modules.ui_manager import add_graphic_element
 
 
 class VideoCamere:
+    """Gestisce la UI delle telecamere, i blocchi dei condotti e il routing grafico dei nodi."""
     def __init__(self, width, height, label_font, title_font):
+        """Prepara trigger, pannello, mappe, feed e strutture dati per la navigazione delle camere."""
         self.width = width
         self.height = height
         self.label_font = label_font
@@ -148,10 +152,12 @@ class VideoCamere:
         self._load_layout_config()
 
     def set_trigger_rect(self, x, y, w, h):
+        """Aggiorna il rettangolo cliccabile del trigger telecamere."""
         self.trigger_rect = pygame.Rect(x, y, w, h)
         return self.trigger_rect
 
     def _toggle_single_blocked_edge(self, edge_id, now_ms=None):
+        """Programma il cambio di stato di un singolo condotto, con una breve transizione visiva."""
         now_ms = pygame.time.get_ticks() if now_ms is None else now_ms
         currently_closed = edge_id in self._blocked_vent_cameras
         self._vent_block_transition = {
@@ -161,6 +167,7 @@ class VideoCamere:
         }
 
     def _update_vent_block_transition(self, now_ms=None):
+        """Applica il cambio di stato dei condotti quando la transizione programmata è scaduta."""
         now_ms = pygame.time.get_ticks() if now_ms is None else now_ms
         edge_id = self._vent_block_transition.get("edge")
         until = int(self._vent_block_transition.get("until", 0) or 0)
@@ -176,6 +183,7 @@ class VideoCamere:
 
     def _edge_for_vent_camera(self, cam_id):
         # Prefer outgoing vent route from selected vent camera.
+        """Restituisce l'arco del condotto associato a una camera dei vent, se presente."""
         targets = self._vent_connections.get(cam_id, [])
         if targets:
             return f"{cam_id}->{targets[0]}"
@@ -194,21 +202,25 @@ class VideoCamere:
         return None
 
     def set_trigger_visible(self, visible):
+        """Imposta trigger visible."""
         self.trigger_visible = bool(visible)
         if not self.trigger_visible:
             self.is_trigger_hovered = False
         return self.trigger_visible
 
     def set_trigger_interactable(self, interactable):
+        """Imposta trigger interactable."""
         self.trigger_interactable = bool(interactable)
         if not self.trigger_interactable:
             self.is_trigger_hovered = False
         return self.trigger_interactable
 
     def is_admin_mode(self):
+        """Indica se è attivo il modalita admin per modificare la mappa delle telecamere."""
         return self._admin_mode
 
     def set_admin_mode(self, enabled):
+        """Imposta admin mode."""
         self._admin_mode = bool(enabled)
         self._admin_drag_camera_id = None
         self._admin_drag_vent_edge = None
@@ -218,10 +230,12 @@ class VideoCamere:
         return self._admin_mode
 
     def set_panel_rect(self, x, y, w, h):
+        """Imposta panel rect."""
         self.panel_rect = pygame.Rect(x, y, w, h)
         return self.panel_rect
 
     def update_hover(self, mouse_pos):
+        """Aggiorna il feedback hover del trigger in base alla posizione del mouse."""
         self.is_trigger_hovered = (
             self.trigger_visible
             and self.trigger_interactable
@@ -229,6 +243,7 @@ class VideoCamere:
         )
 
     def handle_event(self, event):
+        """Gestisce input, modifiche admin e interazioni con mappe, nodi e condotti."""
         self._update_vent_block_transition()
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_F9 and self.is_open:
@@ -440,6 +455,7 @@ class VideoCamere:
         return False
 
     def queue_trigger(self, game=None):
+        """Aggiunge il trigger grafico delle telecamere alla coda UI quando serve."""
         if not self.trigger_visible:
             return
 
@@ -466,16 +482,19 @@ class VideoCamere:
         )
 
     def get_selected_camera_id(self):
+        """Restituisce selected camera id."""
         if not self._feeds:
             return None
         return self._feeds[self._selected_feed_idx]["camera_id"]
 
     def _visible_camera_ids(self):
+        """Restituisce gli ID delle camere che possono essere mostrate nella mappa corrente."""
         if self._active_map == "main":
             return {f"cam{i}" for i in range(1, 11)}
         return {f"cam{i}" for i in range(11, 16)}
 
     def _ensure_selected_feed_visible(self):
+        """Garantisce che il feed selezionato sia davvero visibile nella mappa aperta."""
         if not self._feeds:
             return
 
@@ -490,12 +509,14 @@ class VideoCamere:
                 return
 
     def _remember_selected_for_active_map(self):
+        """Salva la camera selezionata per la mappa attiva prima di cambiarla."""
         if not self._feeds:
             return
         current_id = self._feeds[self._selected_feed_idx]["camera_id"]
         self._last_selected_camera_by_map[self._active_map] = current_id
 
     def _restore_selected_for_active_map(self):
+        """Ripristina la camera selezionata quando si torna alla mappa precedente."""
         target_camera_id = self._last_selected_camera_by_map.get(self._active_map)
         if not target_camera_id:
             return False
@@ -508,6 +529,7 @@ class VideoCamere:
         return False
 
     def _set_anchor_from_mouse(self, camera_id, mouse_pos):
+        """Imposta anchor from mouse."""
         if self._current_map_rect.width <= 0 or self._current_map_rect.height <= 0:
             return
 
@@ -522,6 +544,7 @@ class VideoCamere:
             self._anchors_vents[camera_id] = (rel_x, rel_y)
 
     def _set_vent_block_anchor_from_mouse(self, edge_id, mouse_pos):
+        """Imposta vent block anchor from mouse."""
         if self._current_map_rect.width <= 0 or self._current_map_rect.height <= 0:
             return
 
@@ -532,9 +555,11 @@ class VideoCamere:
         self._vent_block_anchor_by_edge[edge_id] = (rel_x, rel_y)
 
     def _external_nodes_for_active_map(self):
+        """Esegue la funzione _external_nodes_for_active_map del modulo."""
         return self._external_nodes_main if self._active_map == "main" else self._external_nodes_vents
 
     def _toggle_admin_link(self, target):
+        """Attiva o disattiva admin link nel contesto del modulo."""
         if self._admin_connection_from is None:
             return False
 
@@ -578,6 +603,7 @@ class VideoCamere:
         return False
 
     def _node_point(self, map_kind, node_id, map_rect):
+        """Esegue la funzione _node_point del modulo."""
         if map_kind == "main":
             anchor = self._anchors_main.get(node_id)
             if anchor is None:
@@ -596,6 +622,7 @@ class VideoCamere:
         )
 
     def _build_external_node_rects(self, map_rect):
+        """Costruisce external node rects."""
         self._external_node_rects = {}
         nodes = self._external_nodes_for_active_map()
         for node_id, anchor in nodes.items():
@@ -608,6 +635,7 @@ class VideoCamere:
             self._external_node_rects[node_id] = rect
 
     def _draw_external_nodes(self, surface, game=None):
+        """Disegna external nodes nel contesto del modulo."""
         if not self._external_node_rects:
             return
         for node_id, rect in self._external_node_rects.items():
@@ -618,6 +646,7 @@ class VideoCamere:
             surface.blit(txt, txt.get_rect(center=rect.center))
 
     def _set_line_control_point_from_mouse(self, map_kind, edge_id, mouse_pos):
+        """Imposta line control point from mouse."""
         if self._current_map_rect.width <= 0 or self._current_map_rect.height <= 0:
             return
 
@@ -632,9 +661,11 @@ class VideoCamere:
             self._vent_edge_control_points[edge_id] = (rel_x, rel_y)
 
     def _waypoint_dict(self, map_kind):
+        """Esegue la funzione _waypoint_dict del modulo."""
         return self._line_waypoints_main if map_kind == "main" else self._line_waypoints_vents
 
     def _get_line_waypoints(self, map_kind, edge_id):
+        """Restituisce line waypoints."""
         waypoints = self._waypoint_dict(map_kind).get(edge_id, [])
         if waypoints:
             return list(waypoints)
@@ -648,6 +679,7 @@ class VideoCamere:
         return []
 
     def _set_line_waypoint_from_mouse(self, map_kind, edge_id, waypoint_idx, mouse_pos):
+        """Imposta line waypoint from mouse."""
         if self._current_map_rect.width <= 0 or self._current_map_rect.height <= 0:
             return
 
@@ -663,6 +695,7 @@ class VideoCamere:
         self._waypoint_dict(map_kind)[edge_id] = wps
 
     def _insert_line_waypoint_from_mouse(self, map_kind, edge_id, segment_idx, mouse_pos):
+        """Esegue la funzione _insert_line_waypoint_from_mouse del modulo."""
         if self._current_map_rect.width <= 0 or self._current_map_rect.height <= 0:
             return 0
 
@@ -678,6 +711,7 @@ class VideoCamere:
         return insert_idx
 
     def _remove_line_waypoint(self, map_kind, edge_id, waypoint_idx):
+        """Esegue la funzione _remove_line_waypoint del modulo."""
         wps = self._get_line_waypoints(map_kind, edge_id)
         if waypoint_idx < 0 or waypoint_idx >= len(wps):
             return
@@ -688,6 +722,7 @@ class VideoCamere:
             self._waypoint_dict(map_kind).pop(edge_id, None)
 
     def _edge_polyline_points(self, map_kind, edge_id, p1, p2, map_rect):
+        """Esegue la funzione _edge_polyline_points del modulo."""
         points = [p1]
         for rel_x, rel_y in self._get_line_waypoints(map_kind, edge_id):
             points.append((map_rect.left + int(rel_x * map_rect.width), map_rect.top + int(rel_y * map_rect.height)))
@@ -695,6 +730,7 @@ class VideoCamere:
         return points
 
     def _hit_test_line_waypoint(self, point):
+        """Esegue la funzione _hit_test_line_waypoint del modulo."""
         if self._current_map_rect.width <= 0 or self._current_map_rect.height <= 0:
             return None
 
@@ -725,6 +761,7 @@ class VideoCamere:
         return best
 
     def _get_line_control_point(self, map_kind, edge_id, p1, p2, map_rect):
+        """Restituisce line control point."""
         if map_kind == "main":
             rel = self._main_edge_control_points.get(edge_id)
         else:
@@ -739,6 +776,7 @@ class VideoCamere:
         )
 
     def _distance_point_to_segment(self, point, a, b):
+        """Esegue la funzione _distance_point_to_segment del modulo."""
         px, py = point
         ax, ay = a
         bx, by = b
@@ -761,6 +799,7 @@ class VideoCamere:
         return (dx * dx + dy * dy) ** 0.5
 
     def _hit_test_vent_closure_link(self, point):
+        """Esegue la funzione _hit_test_vent_closure_link del modulo."""
         if self._current_map_rect.width <= 0 or self._current_map_rect.height <= 0:
             return None
         if self._active_map != "vents":
@@ -802,6 +841,7 @@ class VideoCamere:
 
     def _remove_link_at_pos(self, point):
         # Priority: remove direct graph edges first, then optional camera->closure links.
+        """Esegue la funzione _remove_link_at_pos del modulo."""
         line_hit = self._hit_test_connection_line(point)
         if line_hit is not None:
             map_kind, edge_id, _segment_idx = line_hit
@@ -839,6 +879,7 @@ class VideoCamere:
         return False
 
     def _hit_test_connection_line(self, point):
+        """Esegue la funzione _hit_test_connection_line del modulo."""
         if self._current_map_rect.width <= 0 or self._current_map_rect.height <= 0:
             return None
 
@@ -873,33 +914,43 @@ class VideoCamere:
         return best
 
     def close(self):
+        """Esegue la funzione close del modulo."""
         self.is_open = False
 
     def set_threat_cameras(self, camera_ids):
+        """Imposta threat cameras."""
         self._threat_cameras = set(camera_ids or [])
 
     def set_threat_sprite(self, sprite_surface):
+        """Imposta threat sprite."""
         self._threat_sprite = sprite_surface
 
     def set_threats_by_camera(self, threats_dict):
+        """Imposta threats by camera."""
         self._threat_sprites_by_camera = threats_dict or {}
 
     def set_camera_error(self, active):
+        """Imposta camera error."""
         self._camera_error_active = bool(active)
 
     def set_vent_blocking_enabled(self, enabled):
+        """Imposta vent blocking enabled."""
         self._vent_blocking_enabled = bool(enabled)
 
     def set_blocked_vents(self, blocked_camera_ids):
+        """Imposta blocked vents."""
         self._blocked_vent_cameras = set(blocked_camera_ids or [])
 
     def get_blocked_vents(self):
+        """Restituisce blocked vents."""
         return self.get_blocked_vent_edges()
 
     def set_blocked_vent_edges(self, blocked_edges):
+        """Imposta blocked vent edges."""
         self._blocked_vent_cameras = set(blocked_edges or [])
 
     def get_blocked_vent_edges(self):
+        """Restituisce blocked vent edges."""
         blocked = set(self._blocked_vent_cameras)
         pending_edge = self._vent_block_transition.get("edge")
         if pending_edge and self._vent_block_transition.get("target_closed", False):
@@ -907,6 +958,7 @@ class VideoCamere:
         return blocked
 
     def build_routes_by_side(self):
+        """Costruisce routes by side."""
         left_target = self._office_targets.get("left", "cam1")
         right_target = self._office_targets.get("right", "office_right")
         left_path = self._find_path("cam10", left_target, self._combined_graph())
@@ -920,6 +972,7 @@ class VideoCamere:
         return {"left": left_route, "right": right_route}
 
     def _ensure_priority_route_edges(self):
+        """Esegue la funzione _ensure_priority_route_edges del modulo."""
         required_edges = {
             "cam9": ["cam11"],
             "cam7": ["cam12"],
@@ -940,9 +993,11 @@ class VideoCamere:
         self._office_targets["right"] = "office_right"
 
     def build_navigation_graph(self):
+        """Costruisce navigation graph."""
         return self._combined_graph()
 
     def _combined_graph(self):
+        """Esegue la funzione _combined_graph del modulo."""
         graph = {key: list(values) for key, values in self._camera_connections.items()}
         for key, values in self._vent_connections.items():
             graph.setdefault(key, [])
@@ -952,6 +1007,7 @@ class VideoCamere:
         return graph
 
     def _find_path(self, start_id, target_id, graph):
+        """Esegue la funzione _find_path del modulo."""
         if start_id == target_id:
             return [start_id]
 
@@ -971,6 +1027,7 @@ class VideoCamere:
         return []
 
     def _load_layout_config(self):
+        """Carica layout config nel contesto del modulo."""
         if not os.path.isfile(self._layout_config_path):
             return
         try:
@@ -1090,6 +1147,7 @@ class VideoCamere:
         self._ensure_priority_route_edges()
 
     def save_layout_config(self):
+        """Salva layout config nel contesto del modulo."""
         payload = {
             "anchors_main": self._anchors_main,
             "anchors_vents": self._anchors_vents,
@@ -1119,6 +1177,7 @@ class VideoCamere:
         return True
 
     def register_movement(self, from_camera, to_camera, jam_duration_ms=1400):
+        """Esegue la funzione register_movement del modulo."""
         now_ms = pygame.time.get_ticks()
         until = now_ms + jam_duration_ms
         for camera_id in (from_camera, to_camera):
@@ -1128,9 +1187,11 @@ class VideoCamere:
             self._camera_jam_until[camera_id] = max(current_until, until)
 
     def _is_camera_jammed(self, camera_id, now_ms):
+        """Esegue la funzione _is_camera_jammed del modulo."""
         return self._camera_jam_until.get(camera_id, 0) > now_ms
 
     def _extract_sort_key(self, filename):
+        """Esegue la funzione _extract_sort_key del modulo."""
         base_name = os.path.splitext(filename)[0]
         found = re.search(r"cam[\s_-]*(\d+)", base_name, flags=re.IGNORECASE)
         if found:
@@ -1138,6 +1199,7 @@ class VideoCamere:
         return 999, base_name.lower()
 
     def _camera_id_from_filename(self, filename):
+        """Esegue la funzione _camera_id_from_filename del modulo."""
         base_name = os.path.splitext(filename)[0].lower()
 
         # Vent files are named like cam_1_vent, cam_2_vent, ...
@@ -1154,6 +1216,7 @@ class VideoCamere:
         return base_name.replace(" ", "_")
 
     def _load_feeds(self):
+        """Carica feeds nel contesto del modulo."""
         self._feeds = []
         self._selected_feed_idx = 0
 
@@ -1196,6 +1259,7 @@ class VideoCamere:
             )
 
     def _load_map_surface(self):
+        """Carica map surface nel contesto del modulo."""
         self._cam_map_surface = None
         self._cam_map_vent_surface = None
         if not os.path.isfile(self._cam_map_path):
@@ -1221,6 +1285,7 @@ class VideoCamere:
                     self._cam_map_vent_surface = None
 
     def _build_vent_placeholder(self, label):
+        """Costruisce vent placeholder."""
         base_w, base_h = 640, 360
         if self._feeds:
             base_w = self._feeds[0]["surface"].get_width()
@@ -1242,6 +1307,7 @@ class VideoCamere:
         return surf.convert()
 
     def _ensure_virtual_vent_feeds(self):
+        """Esegue la funzione _ensure_virtual_vent_feeds del modulo."""
         existing_ids = {feed["camera_id"] for feed in self._feeds}
         for cam_n in (11, 12, 13, 14, 15):
             cam_id = f"cam{cam_n}"
@@ -1257,6 +1323,7 @@ class VideoCamere:
             )
 
     def _build_cam_button_rects(self, map_rect):
+        """Costruisce cam button rects."""
         self._cam_button_rects = []
         self._cam_button_rect_by_id = {}
         if not self._feeds:
@@ -1296,6 +1363,7 @@ class VideoCamere:
             self._cam_button_rect_by_id[cam_id] = rect
 
     def _draw_map_background(self, surface, map_rect):
+        """Disegna map background nel contesto del modulo."""
         pygame.draw.rect(surface, (8, 10, 14), map_rect)
         if self._active_map == "main":
             if self._cam_map_surface is not None:
@@ -1321,6 +1389,7 @@ class VideoCamere:
         pygame.draw.rect(surface, (122, 146, 162), map_rect, width=2)
 
     def _draw_connection_lines(self, surface, map_rect):
+        """Disegna connection lines nel contesto del modulo."""
         if self._active_map == "main":
             for src, targets in self._camera_connections.items():
                 p1 = self._node_point("main", src, map_rect)
@@ -1353,6 +1422,7 @@ class VideoCamere:
                             pygame.draw.circle(surface, (192, 192, 216), wp, 5)
 
     def _draw_vent_block_rects(self, surface, map_rect):
+        """Disegna vent block rects nel contesto del modulo."""
         self._vent_block_rects = {}
         if self._active_map != "vents":
             return
@@ -1441,6 +1511,7 @@ class VideoCamere:
                     pygame.draw.line(surface, (248, 206, 116), p1, p2, 2)
 
     def _draw_monitor_button(self, surface, rect, text):
+        """Disegna monitor button nel contesto del modulo."""
         pygame.draw.rect(surface, (42, 44, 50), rect)
         pygame.draw.rect(surface, (186, 190, 198), rect, width=2)
 
@@ -1467,6 +1538,7 @@ class VideoCamere:
         surface.blit(text_img, text_img.get_rect(center=rect.center))
 
     def _draw_cam_triangle(self, surface, cam_rect, enabled, is_selected):
+        """Disegna cam triangle nel contesto del modulo."""
         if not enabled:
             return
 
@@ -1486,6 +1558,7 @@ class VideoCamere:
         pygame.draw.polygon(surface, border, points, width=2)
 
     def _draw_feed_noise(self, surface, feed_area, intensity=1.0):
+        """Disegna feed noise nel contesto del modulo."""
         noise = pygame.Surface((feed_area.width, feed_area.height), pygame.SRCALPHA)
         particles = int(max(340, feed_area.width) * max(0.7, intensity))
         for _ in range(particles):
@@ -1506,6 +1579,7 @@ class VideoCamere:
 
     def _draw_feed_glitch(self, surface, feed_area, intensity=1.0):
         # Horizontal tearing bands for CRT-like camera glitches.
+        """Disegna feed glitch nel contesto del modulo."""
         if random.random() > min(1.0, 0.55 * intensity):
             return
 
@@ -1520,6 +1594,7 @@ class VideoCamere:
 
     def _draw_total_jam(self, surface, feed_area):
         # Total signal loss: static storm + dark layer that fully hides feed details.
+        """Disegna total jam nel contesto del modulo."""
         self._draw_feed_noise(surface, feed_area, intensity=4.0)
         self._draw_feed_glitch(surface, feed_area, intensity=4.0)
 
@@ -1544,6 +1619,7 @@ class VideoCamere:
         surface.blit(label, label.get_rect(center=feed_area.center))
 
     def _play_switch_sound(self):
+        """Riproduce switch sound nel contesto del modulo."""
         if not os.path.isfile(self._cam_switch_sound):
             return
         try:
@@ -1555,6 +1631,7 @@ class VideoCamere:
             return
 
     def draw_overlay(self, surface, game=None):
+        """Disegna overlay nel contesto del modulo."""
         if not self.is_open:
             return
 
@@ -1724,14 +1801,18 @@ class VideoCamere:
             surface.blit(hint, hint.get_rect(bottomleft=(self.panel_rect.left + 16, self.panel_rect.bottom - 12)))
 
     def _ui_text(self, key, fallback, game=None):
+        """Esegue la funzione _ui_text del modulo."""
         if game is not None and hasattr(game, "tr"):
             return game.tr(key)
         return fallback
 
     def _external_node_label(self, node_id, game=None):
+        """Esegue la funzione _external_node_label del modulo."""
         if node_id.startswith("office_"):
             office_side = node_id.split("_", 1)[-1]
             return self._ui_text(f"ui.cam_office_{office_side}", node_id.replace("_", " ").upper(), game)
         if node_id.startswith("cam"):
             return self._ui_text("ui.cam_label", "CAM", game) + " " + node_id.replace("cam", "")
         return node_id.upper()
+
+

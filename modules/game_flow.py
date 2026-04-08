@@ -1,3 +1,5 @@
+﻿"""Gestione del flusso partita: stati, transizioni, audio della notte, video finali e progressione."""
+
 import sys
 import traceback
 import json
@@ -13,11 +15,14 @@ except Exception:
 
 
 class GameFlowMixin:
+    """Raccoglie tutta la logica che sposta il gioco tra menu, notte, errori, video e crediti."""
     def _resolve_night_ringtone_path(self):
+        """Restituisce il percorso del ringtone della chiamata notturna se il file esiste."""
         ringtone_path = os.path.join("assets", "audio", "calls", "ringtone.wav")
         return ringtone_path if os.path.isfile(ringtone_path) else None
 
     def _resolve_night_call_path(self, night_value=None):
+        """Cerca il file audio della chiamata della notte nella lingua attiva, con fallback sulla notte 1."""
         night_index = self._clamp_night(night_value if night_value is not None else getattr(self, "current_night", 1))
         language = str(getattr(self, "language", "en") or "en").strip().lower()
         call_dir = os.path.join("assets", "audio", "calls", language)
@@ -31,6 +36,7 @@ class GameFlowMixin:
         return None
 
     def _stop_current_night_call(self, reset_mute_state=True):
+        """Ferma la chiamata notturna corrente e resetta lo stato collegato al pulsante mute."""
         current_call = getattr(self, "current_night_call_path", None)
         if current_call:
             self.audio.stop_sound(current_call)
@@ -43,6 +49,7 @@ class GameFlowMixin:
             self.call_mute_button_rect = pygame.Rect(0, 0, 0, 0)
 
     def _mute_current_night_call(self):
+        """Silenzia la chiamata notturna se sta ancora suonando o se ne è pronta una da avviare."""
         if getattr(self, "current_night_call_muted", False):
             return False
 
@@ -56,6 +63,7 @@ class GameFlowMixin:
         return True
 
     def _play_night_call(self, night_value=None):
+        """Avvia la chiamata della notte, preceduta dal ringtone se configurato."""
         self._stop_current_night_call()
 
         call_path = self._resolve_night_call_path(night_value)
@@ -82,6 +90,7 @@ class GameFlowMixin:
         return played
 
     def _sync_current_night_call(self):
+        """Mantiene coerente lo stato della chiamata notturna quando il primo audio finisce e parte il secondo."""
         current_call = getattr(self, "current_night_call_path", None)
         if not current_call:
             return False
@@ -110,10 +119,12 @@ class GameFlowMixin:
         return False
 
     def _stop_system_loop_sounds(self):
+        """Ferma i loop sonori legati ai sistemi, come reboot ed errori attivi."""
         self.audio.stop_loop_sound(getattr(self, "system_reboot_sound", "assets/audio/reboot.wav"))
         self.audio.stop_loop_sound(getattr(self, "system_error_sound", "assets/audio/error.wav"))
 
     def _update_error_loop_sound(self):
+        """Attiva o spegne il loop sonoro degli errori in base agli stati di sistema presenti."""
         sound_file = getattr(self, "system_error_sound", "assets/audio/error.wav")
         if any(bool(v) for v in self.system_errors.values()):
             self.audio.start_loop_sound(sound_file, volume=0.6)
@@ -121,6 +132,7 @@ class GameFlowMixin:
             self.audio.stop_loop_sound(sound_file)
 
     def _start_gameplay_ambience(self):
+        """Avvia la musica di atmosfera della notte con il volume previsto per il gameplay."""
         self.audio.play_music(
             music_file=getattr(self, "gameplay_ambience_music", "assets/audio/ambience.wav"),
             loop=True,
@@ -129,9 +141,11 @@ class GameFlowMixin:
         )
 
     def _stop_gameplay_ambience(self, fade_ms=None):
+        """Ferma la musica di atmosfera della notte, usando la dissolvenza configurata se serve."""
         self.audio.stop_music(fade_ms=getattr(self, "music_fade_ms", 800) if fade_ms is None else fade_ms)
 
     def _schedule_next_random_error(self, now_ms=None):
+        """Pianifica il prossimo errore casuale scegliendo un intervallo dentro i limiti configurati."""
         now_ms = pygame.time.get_ticks() if now_ms is None else now_ms
         min_ms = int(getattr(self, "random_error_min_interval_ms", 18000))
         max_ms = int(getattr(self, "random_error_max_interval_ms", 32000))
@@ -140,6 +154,7 @@ class GameFlowMixin:
         self.next_random_system_error_at = now_ms + random.randint(max(1000, min_ms), max(1000, max_ms))
 
     def maybe_trigger_random_system_error(self, now_ms=None, allow_when_admin_paused=False):
+        """Decide se avviare uno o più errori casuali e aggiorna il timer per il prossimo controllo."""
         if not bool(getattr(self, "random_system_errors_enabled", True)):
             return False
 
@@ -181,20 +196,24 @@ class GameFlowMixin:
         return True
 
     def _is_rebooting(self, error_type, now_ms=None):
+        """Dice se un singolo errore è ancora dentro la finestra temporale del reboot."""
         now_ms = pygame.time.get_ticks() if now_ms is None else now_ms
         return now_ms < int(self.system_reboots.get(error_type, 0) or 0)
 
     def _is_any_rebooting(self, now_ms=None):
+        """True quando almeno un sottosistema sta ancora completando il reboot."""
         now_ms = pygame.time.get_ticks() if now_ms is None else now_ms
         return any(now_ms < int(v or 0) for v in self.system_reboots.values())
 
     def _start_reboot(self, error_type, now_ms=None):
+        """Avvia il countdown di reboot per il sottosistema indicato."""
         if error_type not in self.system_errors:
             return
         now_ms = pygame.time.get_ticks() if now_ms is None else now_ms
         self.system_reboots[error_type] = now_ms + int(getattr(self, "system_reboot_duration_ms", 5000))
 
     def _restart_active_reboots(self, now_ms=None):
+        """Riavvia i reboot già in corso, riallineandoli a una nuova finestra completa."""
         now_ms = pygame.time.get_ticks() if now_ms is None else now_ms
         duration = int(getattr(self, "system_reboot_duration_ms", 5000))
         for error_type, until in list(self.system_reboots.items()):
@@ -202,6 +221,7 @@ class GameFlowMixin:
                 self.system_reboots[error_type] = now_ms + duration
 
     def _cancel_active_reboots(self, now_ms=None):
+        """Annulla i reboot attivi e lascia i sistemi nello stato di errore finché non vengono riavviati."""
         now_ms = pygame.time.get_ticks() if now_ms is None else now_ms
         had_active = False
         for error_type, until in list(self.system_reboots.items()):
@@ -216,6 +236,7 @@ class GameFlowMixin:
             self._update_error_loop_sound()
 
     def _update_reboots(self, now_ms=None):
+        """Aggiorna i countdown di reboot e libera i sistemi quando il tempo scade."""
         now_ms = pygame.time.get_ticks() if now_ms is None else now_ms
         for error_type, until in list(self.system_reboots.items()):
             until = int(until or 0)
@@ -236,6 +257,7 @@ class GameFlowMixin:
             self.audio.stop_loop_sound(getattr(self, "system_reboot_sound", "assets/audio/reboot.wav"))
 
     def reset_system_errors(self):
+        """Reimposta system errors."""
         self.system_errors = {
             "camera": False,
             "ventilation": False,
@@ -255,6 +277,7 @@ class GameFlowMixin:
         self._schedule_next_random_error()
 
     def trigger_system_error(self, error_type):
+        """Esegue la funzione trigger_system_error del modulo."""
         if error_type not in self.system_errors:
             return
         self.system_errors[error_type] = True
@@ -270,6 +293,7 @@ class GameFlowMixin:
             self.flashlight_active = False
 
     def handle_system_panel_action(self, action):
+        """Gestisce system panel action nel contesto del modulo."""
         now_ms = pygame.time.get_ticks()
         self._update_reboots(now_ms)
 
@@ -303,6 +327,7 @@ class GameFlowMixin:
             self.system_panel.is_open = False
 
     def _shift_gameplay_timers(self, delta_ms):
+        """Esegue la funzione _shift_gameplay_timers del modulo."""
         if delta_ms <= 0:
             return
         self.flashlight_activation_time += delta_ms
@@ -315,6 +340,7 @@ class GameFlowMixin:
         self.animatronics.shift_timers(delta_ms)
 
     def _clamp_night(self, night_value):
+        """Esegue la funzione _clamp_night del modulo."""
         try:
             night_int = int(night_value)
         except (TypeError, ValueError):
@@ -323,9 +349,11 @@ class GameFlowMixin:
         return max(1, min(max_night, night_int))
 
     def _get_progress_save_path(self):
+        """Restituisce progress save path."""
         return getattr(self, "progress_save_path", os.path.join(os.getcwd(), "savegame.json"))
 
     def _load_progress(self):
+        """Carica progress nel contesto del modulo."""
         data = self._read_progress_data()
         completed = bool(data.get("completed", False)) if data else False
         self.current_night = self._clamp_night(data.get("next_night", 1)) if not completed else 1
@@ -333,6 +361,7 @@ class GameFlowMixin:
         return data
 
     def _read_progress_data(self):
+        """Esegue la funzione _read_progress_data del modulo."""
         save_path = self._get_progress_save_path()
         if not os.path.isfile(save_path):
             return {}
@@ -349,6 +378,7 @@ class GameFlowMixin:
         return payload
 
     def save_progress(self, next_night=None, completed=False):
+        """Salva progress nel contesto del modulo."""
         save_path = self._get_progress_save_path()
         progress = {
             "schema_version": 1,
@@ -367,6 +397,7 @@ class GameFlowMixin:
         return True
 
     def _resolve_jumpscare_data(self, name):
+        """Risolve jumpscare data nel contesto del modulo."""
         if not getattr(self, "jumpscare_assets", None):
             return None
 
@@ -381,6 +412,7 @@ class GameFlowMixin:
         return None
 
     def _stop_jumpscare_media(self):
+        """Interrompe jumpscare media nel contesto del modulo."""
         if getattr(self, "jumpscare_video_cap", None) is not None:
             try:
                 self.jumpscare_video_cap.release()
@@ -400,6 +432,7 @@ class GameFlowMixin:
         self.jumpscare_shake_strength = 0
 
     def run(self):
+        """Esegue la funzione run del modulo."""
         running = True
         while running:
             try:
@@ -422,6 +455,7 @@ class GameFlowMixin:
         sys.exit()
 
     def update_and_draw(self):
+        """Aggiorna and draw nel contesto del modulo."""
         if self.state == "menu":
             self.draw_menu()
         elif self.state == "settings":
@@ -448,6 +482,7 @@ class GameFlowMixin:
             self.draw_game()
 
     def _enter_night_intro(self):
+        """Entra nello stato night intro nel contesto del modulo."""
         self.audio.play_sound(self.button_sound, volume=0.8)
         self.audio.stop_music(fade_ms=self.music_fade_ms)
         self.audio.play_sound(getattr(self, "night_start_sound", "assets/audio/night_start.wav"), volume=0.95)
@@ -455,6 +490,7 @@ class GameFlowMixin:
         self.state = "night_intro"
 
     def _start_loading_screen(self, next_action, message=None, duration_ms=1000):
+        """Avvia loading screen nel contesto del modulo."""
         self.loading_message = str(message or self.tr("loading.default"))
         self.loading_started_at = pygame.time.get_ticks()
         self.loading_duration_ms = max(200, int(duration_ms))
@@ -462,6 +498,7 @@ class GameFlowMixin:
         self.state = "loading"
 
     def start_new_game(self):
+        """Avvia new game nel contesto del modulo."""
         self.current_night = 1
         self.last_completed_night = 0
         self.first_night_tutorial_seen = False
@@ -473,6 +510,7 @@ class GameFlowMixin:
         )
 
     def continue_game(self):
+        """Esegue la funzione continue_game del modulo."""
         self._load_progress()
         if not self.can_continue:
             return
@@ -484,15 +522,18 @@ class GameFlowMixin:
 
     def enter_game(self):
         # Backward-compatible alias.
+        """Entra nello stato game nel contesto del modulo."""
         self.start_new_game()
 
     def _enter_first_night_tutorial(self):
+        """Entra nello stato first night tutorial nel contesto del modulo."""
         self.first_night_tutorial_seen = True
         self.tutorial_started_at = pygame.time.get_ticks()
         self.tutorial_page = 0
         self.state = "night_tutorial"
 
     def start_gameplay(self):
+        """Avvia gameplay nel contesto del modulo."""
         if self.current_night == 1 and not bool(getattr(self, "first_night_tutorial_seen", False)):
             self._enter_first_night_tutorial()
             return
@@ -503,6 +544,7 @@ class GameFlowMixin:
         )
 
     def _begin_gameplay_session(self):
+        """Esegue la funzione _begin_gameplay_session del modulo."""
         self._stop_jumpscare_media()
         self.state = "game"
         self.orologio.start(pygame.time.get_ticks())
@@ -535,6 +577,7 @@ class GameFlowMixin:
         self.video_camere.close()
 
     def enter_jumpscare(self, name, continue_game=False, pending_error=None):
+        """Entra nello stato jumpscare nel contesto del modulo."""
         self._stop_jumpscare_media()
         self._stop_current_night_call()
         self._stop_system_loop_sounds()
@@ -589,9 +632,11 @@ class GameFlowMixin:
         self.state = "jumpscare"
 
     def enter_error_jumpscare(self, name, error_type):
+        """Entra nello stato error jumpscare nel contesto del modulo."""
         self.enter_jumpscare(name=name, continue_game=True, pending_error=error_type)
 
     def _start_defeat_video(self):
+        """Avvia defeat video nel contesto del modulo."""
         self._stop_jumpscare_media()
         self._stop_current_night_call()
         self._stop_system_loop_sounds()
@@ -645,6 +690,7 @@ class GameFlowMixin:
         self.state = "defeat_video"
 
     def _stop_defeat_video(self):
+        """Interrompe defeat video nel contesto del modulo."""
         if self.defeat_video_cap is not None:
             try:
                 self.defeat_video_cap.release()
@@ -657,6 +703,7 @@ class GameFlowMixin:
         self.defeat_video_audio_started = False
 
     def _start_victory_video(self):
+        """Avvia victory video nel contesto del modulo."""
         self._stop_victory_video()
         self._stop_current_night_call()
         self._stop_system_loop_sounds()
@@ -707,6 +754,7 @@ class GameFlowMixin:
         self.state = "victory_video"
 
     def _stop_victory_video(self):
+        """Interrompe victory video nel contesto del modulo."""
         if self.victory_video_cap is not None:
             try:
                 self.victory_video_cap.release()
@@ -719,6 +767,7 @@ class GameFlowMixin:
         self.victory_video_audio_started = False
 
     def _start_endgame_video(self):
+        """Avvia endgame video nel contesto del modulo."""
         self._stop_endgame_video()
         self._stop_current_night_call()
         self._stop_system_loop_sounds()
@@ -768,6 +817,7 @@ class GameFlowMixin:
         self.state = "endgame_video"
 
     def _stop_endgame_video(self):
+        """Interrompe endgame video nel contesto del modulo."""
         if self.endgame_video_cap is not None:
             try:
                 self.endgame_video_cap.release()
@@ -780,6 +830,7 @@ class GameFlowMixin:
         self.endgame_video_audio_started = False
 
     def _start_credits_video(self):
+        """Avvia credits video nel contesto del modulo."""
         self._stop_credits_video()
         self._stop_current_night_call()
         self._stop_system_loop_sounds()
@@ -832,6 +883,7 @@ class GameFlowMixin:
         self.state = "credits_video"
 
     def _stop_credits_video(self):
+        """Interrompe credits video nel contesto del modulo."""
         if self.credits_video_cap is not None:
             try:
                 self.credits_video_cap.release()
@@ -845,6 +897,7 @@ class GameFlowMixin:
         self.credits_video_audio_started = False
 
     def _load_menu_video(self):
+        """Carica menu video nel contesto del modulo."""
         if self.menu_video_cap is not None:
             try:
                 self.menu_video_cap.release()
@@ -878,6 +931,7 @@ class GameFlowMixin:
                 self.menu_video_cap = None
 
     def exit_night(self):
+        """Esce dallo stato night nel contesto del modulo."""
         self.audio.play_sound(self.button_sound, volume=0.8)
         self._stop_current_night_call()
         self.audio.stop_music(fade_ms=self.music_fade_ms)
@@ -891,6 +945,7 @@ class GameFlowMixin:
             self._start_victory_video()
 
     def enter_menu(self, play_click=False):
+        """Entra nello stato menu nel contesto del modulo."""
         if play_click:
             self.audio.play_sound(self.button_sound, volume=0.8)
         self._stop_current_night_call()
@@ -909,3 +964,5 @@ class GameFlowMixin:
         self.system_panel.is_open = False
         self.state = "menu"
         self._load_menu_video()
+
+

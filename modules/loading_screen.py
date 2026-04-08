@@ -1,7 +1,10 @@
+"""Schermata di caricamento con barra di avanzamento e callback finale."""
+
 import pygame
 
 
 def draw_loading_screen(game):
+    """Disegna il messaggio di caricamento, aggiorna la barra e avvia l'azione successiva a fine attesa."""
     now_ms = pygame.time.get_ticks()
     started_at = int(getattr(game, "loading_started_at", now_ms) or now_ms)
     duration_ms = max(200, int(getattr(game, "loading_duration_ms", 1000) or 1000))
@@ -31,3 +34,4 @@ def draw_loading_screen(game):
         game.loading_next_action = None
         if callable(next_action):
             next_action()
+

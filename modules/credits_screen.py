@@ -1,7 +1,10 @@
+﻿"""Testi e rendering della sequenza crediti, con supporto a italiano e inglese."""
+
 import pygame
 
 
 def build_credits_script(language):
+    """Costruisce la scaletta dei crediti nella lingua richiesta."""
     if str(language).lower() == "it":
         return [
             {"type": "title", "text": "Five Nights at The Corrupted Lab"},
@@ -11,7 +14,7 @@ def build_credits_script(language):
             {
                 "type": "name",
                 "text": "Parodia dichiarata",
-                "detail": "Il gioco nasce come parodia del gioco 'Five Nights at Freddy's 3'. L'obiettivo non è replicare l'opera originale, ma reinterpretarne alcune atmosfere con tono ironico, ambientazione scolastica e personaggi volutamente sopra le righe.",
+                "detail": "Il gioco nasce come parodia del gioco 'Five Nights at Freddy's 3'. L'obiettivo non ÃƒÂ¨ replicare l'opera originale, ma reinterpretarne alcune atmosfere con tono ironico, ambientazione scolastica e personaggi volutamente sopra le righe.",
             },
             {
                 "type": "name",
@@ -145,6 +148,7 @@ def build_credits_script(language):
 
 
 def draw_credits_video(game):
+    """Disegna i crediti in scorrimento, con eventuale video di sfondo e suggerimento per saltare."""
     now_ms = pygame.time.get_ticks()
 
     # Optional video background behind the rolling credits.
@@ -277,3 +281,5 @@ def draw_credits_video(game):
         fade_surface = pygame.Surface((game.width, game.height), pygame.SRCALPHA)
         fade_surface.fill((0, 0, 0, max(0, min(255, fade_alpha))))
         game.screen.blit(fade_surface, (0, 0))
+
+

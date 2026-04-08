@@ -1,3 +1,5 @@
+﻿"""Rendering frame-by-frame delle schermate, dell'HUD e dei video di transizione del gioco."""
+
 import os
 import random
 
@@ -11,7 +13,9 @@ from modules.ui_manager import add_graphic_element, draw_graphic_elements
 
 
 class GameRenderingMixin:
+    """Raccoglie il rendering delle schermate principali, dei video e degli overlay di gioco."""
     def _load_custom_cursor(self, cursor_path=None, hotspot=None):
+        """Carica il cursore personalizzato e aggiorna la visibilità del mouse di sistema."""
         path = cursor_path if cursor_path is not None else getattr(self, "custom_cursor_path", None)
         self.custom_cursor_surface = None
         self.custom_cursor_hotspot = tuple(hotspot or getattr(self, "custom_cursor_hotspot", (0, 0)))
@@ -31,12 +35,14 @@ class GameRenderingMixin:
         return True
 
     def _sync_custom_cursor_visibility(self):
+        """Nasconde il cursore di sistema quando quello personalizzato è disponibile."""
         try:
             pygame.mouse.set_visible(getattr(self, "custom_cursor_surface", None) is None)
         except Exception:
             pass
 
     def draw_custom_cursor(self):
+        """Disegna il cursore personalizzato nella posizione del mouse."""
         cursor = getattr(self, "custom_cursor_surface", None)
         if cursor is None:
             return
@@ -47,6 +53,7 @@ class GameRenderingMixin:
 
     @staticmethod
     def _get_video_fps(capture, default_fps=30.0):
+        """Restituisce video fps."""
         if capture is None:
             return float(default_fps)
         fps = float(capture.get(5) or 0.0)  # OpenCV property id 5 == CAP_PROP_FPS
@@ -56,6 +63,7 @@ class GameRenderingMixin:
         return float(default_fps)
 
     def _read_synced_video_frame(self, capture, started_at_ms, now_ms):
+        """Legge un frame video mantenendo la riproduzione sincronizzata con il tempo trascorso."""
         if capture is None:
             return None
 
@@ -113,6 +121,7 @@ class GameRenderingMixin:
         return scaled_surface
 
     def _draw_end_video_label(self, text, color):
+        """Disegna l'etichetta testuale che introduce o chiude un video finale."""
         panel_h = 94
         panel = pygame.Surface((self.width, panel_h), pygame.SRCALPHA)
         panel.fill((0, 0, 0, 120))
@@ -125,6 +134,7 @@ class GameRenderingMixin:
         self.screen.blit(label, label.get_rect(center=center))
 
     def _draw_error_alert_overlay(self, now_ms):
+        """Aggiunge un flash rosso quando uno o più sistemi sono in errore."""
         active_errors = [name for name, is_active in self.system_errors.items() if is_active]
         if not active_errors:
             return
@@ -138,15 +148,19 @@ class GameRenderingMixin:
         self.screen.blit(red_flash, (0, 0))
 
     def draw_menu(self):
+        """Passa il rendering al menu principale."""
         draw_menu_screen(self)
 
     def draw_settings(self):
+        """Passa il rendering alla schermata impostazioni."""
         draw_settings_screen(self)
 
     def draw_loading_screen(self):
+        """Passa il rendering alla schermata di caricamento."""
         draw_loading_screen_module(self)
 
     def queue_button(self, rect, text):
+        """Aggiunge un pulsante alla coda grafica usando lo stile coerente del menu."""
         hovered = rect.collidepoint(pygame.mouse.get_pos())
         base_fill = (92, 138, 46, 238)
         hover_fill = (122, 176, 66, 252)
@@ -165,6 +179,7 @@ class GameRenderingMixin:
         )
 
     def _draw_mute_call_button(self, anchor_rect):
+        """Disegna il pulsante per silenziare la chiamata notturna accanto al riferimento richiesto."""
         if not getattr(self, "current_night_call_path", None):
             self.call_mute_button_rect = pygame.Rect(0, 0, 0, 0)
             return None
@@ -205,6 +220,7 @@ class GameRenderingMixin:
         return button_rect
 
     def draw_glitch_overlay(self, surface):
+        """Disegna glitch overlay nel contesto del modulo."""
         scanlines = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
         for y in range(0, self.height, 4):
             pygame.draw.line(scanlines, (0, 0, 0, 24), (0, y), (self.width, y))
@@ -238,6 +254,7 @@ class GameRenderingMixin:
         surface.blit(tint, (0, 0))
 
     def draw_night_intro(self):
+        """Disegna night intro nel contesto del modulo."""
         elapsed = pygame.time.get_ticks() - self.intro_start_time
         if elapsed >= self.intro_duration_ms:
             self.start_gameplay()
@@ -249,6 +266,7 @@ class GameRenderingMixin:
         self.screen.blit(hour, hour.get_rect(center=(self.width // 2, self.height // 2 + 38)))
 
     def draw_night_tutorial(self):
+        """Disegna night tutorial nel contesto del modulo."""
         self.screen.fill((0, 0, 0))
         current_page = int(getattr(self, "tutorial_page", 0) or 0)
 
@@ -326,6 +344,7 @@ class GameRenderingMixin:
         self.screen.blit(skip_tutorial, skip_tutorial.get_rect(center=(panel.centerx, panel.bottom - 14)))
 
     def draw_night_outro(self):
+        """Disegna night outro nel contesto del modulo."""
         elapsed = pygame.time.get_ticks() - self.outro_start_time
         if elapsed >= self.outro_duration_ms:
             self.enter_menu(play_click=True)
@@ -338,6 +357,7 @@ class GameRenderingMixin:
         self.screen.blit(desc, desc.get_rect(center=(self.width // 2, self.height // 2 + 38)))
 
     def draw_game(self):
+        """Disegna game nel contesto del modulo."""
         mouse_pos = pygame.mouse.get_pos()
         mouse_x, _ = mouse_pos
         admin_mode = self.video_camere.is_admin_mode()
@@ -462,7 +482,10 @@ class GameRenderingMixin:
                             to_idx = -1
                         if 11 <= to_idx <= 15:
                             if now_ms - getattr(self, "_last_vent_enter_sound_at", 0) >= getattr(self, "_vent_enter_sound_cooldown_ms", 500):
-                                self.audio.start_loop_sound(getattr(self, "vent_enter_sound", "assets/audio/vents.wav"), volume=0.8)
+                                self.audio.start_loop_sound(
+                                    getattr(self, "vent_enter_sound", "assets/audio/vents.wav"),
+                                    volume=float(getattr(self, "vent_enter_sound_volume", 0.95)),
+                                )
                                 self._vent_move_sound_until = now_ms + 550
                                 self._last_vent_enter_sound_at = now_ms
                 if event.get("type") == "jumpscare":
@@ -564,6 +587,7 @@ class GameRenderingMixin:
             return
 
     def draw_jumpscare(self):
+        """Disegna jumpscare nel contesto del modulo."""
         now_ms = pygame.time.get_ticks()
         elapsed = now_ms - self.jumpscare_start_time
         if elapsed >= self.jumpscare_duration_ms:
@@ -639,6 +663,7 @@ class GameRenderingMixin:
                 self.screen.blit(flash, (0, 0))
 
     def draw_defeat_video(self):
+        """Disegna defeat video nel contesto del modulo."""
         now_ms = pygame.time.get_ticks()
 
         if self.defeat_video_cap is None:
@@ -671,6 +696,7 @@ class GameRenderingMixin:
         self._draw_end_video_label("GAME OVER", (255, 90, 90))
 
     def draw_victory_video(self):
+        """Disegna victory video nel contesto del modulo."""
         now_ms = pygame.time.get_ticks()
 
         if self.victory_video_cap is None:
@@ -702,6 +728,7 @@ class GameRenderingMixin:
         self._draw_end_video_label(self.tr("ui.victory"), (120, 255, 150))
 
     def draw_endgame_video(self):
+        """Disegna endgame video nel contesto del modulo."""
         now_ms = pygame.time.get_ticks()
 
         if self.endgame_video_cap is None:
@@ -736,10 +763,12 @@ class GameRenderingMixin:
         self.screen.blit(skip_hint, skip_hint.get_rect(bottomright=(self.width - 26, self.height - 24)))
 
     def draw_credits_video(self):
+        """Disegna credits video nel contesto del modulo."""
         draw_credits_video_screen(self)
 
     def _draw_door_threats(self, door_threats, cam_x, side="right"):
         # Anchor near the office side door in world space, then convert to screen space.
+        """Disegna door threats nel contesto del modulo."""
         if side == "left":
             door_world_x = int(self.game_background.get_width() * 0.24)
         else:
@@ -763,6 +792,7 @@ class GameRenderingMixin:
             self.screen.blit(img, (x, y))
 
     def _get_flashlight_lit_targets(self, positions, cam_x):
+        """Restituisce flashlight lit targets."""
         mouse_pos = pygame.mouse.get_pos()
         lit_targets = []
 
@@ -795,6 +825,7 @@ class GameRenderingMixin:
         return lit_targets
 
     def _is_rect_hit_by_flashlight(self, rect, light_center):
+        """Esegue la funzione _is_rect_hit_by_flashlight del modulo."""
         light_x, light_y = light_center
         closest_x = max(rect.left, min(light_x, rect.right))
         closest_y = max(rect.top, min(light_y, rect.bottom))
@@ -803,6 +834,7 @@ class GameRenderingMixin:
         return (dx * dx + dy * dy) <= (self.flashlight.radius * self.flashlight.radius)
 
     def _draw_flashlight_repel_feedback(self, now_ms):
+        """Disegna flashlight repel feedback nel contesto del modulo."""
         remaining = max(0, self.flashlight_repel_feedback_until - now_ms)
         alpha = int(165 * (remaining / 360.0))
         pulse = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
@@ -814,3 +846,5 @@ class GameRenderingMixin:
         center = (self.width // 2, int(self.height * 0.18))
         self.screen.blit(text_shadow, text_shadow.get_rect(center=(center[0] + 2, center[1] + 2)))
         self.screen.blit(text, text.get_rect(center=center))
+
+

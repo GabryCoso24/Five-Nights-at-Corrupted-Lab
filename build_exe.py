@@ -1,3 +1,5 @@
+﻿"""Script di build per la creazione dell'eseguibile del progetto."""
+
 from __future__ import annotations
 
 import shutil
@@ -16,6 +18,7 @@ EXE_ICON = ROOT / "assets" / "images" / "logo.ico"
 
 
 def main() -> int:
+    """Esegue la build PyInstaller e stampa il percorso dell'eseguibile generato."""
     if not ENTRYPOINT.exists():
         print(f"Impossibile trovare {ENTRYPOINT.name} nella cartella del progetto.")
         return 1
@@ -60,3 +63,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

@@ -1,8 +1,12 @@
+﻿"""Coda condivisa per elementi UI: accumula rettangoli testuali e li disegna in un unico passaggio."""
+
 import pygame
 
 
 class UIManager:
+    """Mantiene la coda degli elementi grafici temporanei da renderizzare sullo schermo."""
     def __init__(self):
+        """Inizializza la coda vuota degli elementi grafici."""
         self._queue = []
 
     def add_rect_text(
@@ -18,6 +22,7 @@ class UIManager:
         border_width=2,
         text_angle=0,
     ):
+        """Aggiunge un elemento rettangolare con testo alla coda di rendering."""
         self._queue.append(
             {
                 "type": "rect_text",
@@ -34,6 +39,7 @@ class UIManager:
         )
 
     def draw(self, surface):
+        """Disegna tutti gli elementi accumulati e poi svuota la coda."""
         for item in self._queue:
             if item["type"] != "rect_text":
                 continue
@@ -79,6 +85,7 @@ class UIManager:
 
     @staticmethod
     def _normalize_color(color):
+        """Converte un colore in una tupla RGBA composta da interi validi."""
         if len(color) == 3:
             return (int(color[0]), int(color[1]), int(color[2]), 255)
 
@@ -107,6 +114,7 @@ def add_graphic_element(
     border_width=2,
     text_angle=0,
 ):
+    """Aggiunge un elemento grafico alla coda UI condivisa."""
     _ui_manager.add_rect_text(
         rect=rect,
         text=text,
@@ -121,4 +129,7 @@ def add_graphic_element(
 
 
 def draw_graphic_elements(surface):
+    """Disegna e svuota la coda condivisa degli elementi grafici."""
     _ui_manager.draw(surface)
+
+

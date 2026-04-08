@@ -1,10 +1,14 @@
+﻿"""Pannello sistemi: mostra errori attivi, avvia i reboot e blocca le azioni finché la riparazione è in corso."""
+
 import pygame
 
 from modules.ui_manager import add_graphic_element
 
 
 class SystemPanel:
+    """Gestisce trigger, pannello aperto e pulsanti di reboot del sistema."""
     def __init__(self, width, height, label_font, title_font):
+        """Calcola geometria e font del pannello, poi prepara i rettangoli cliccabili delle azioni."""
         self.width = width
         self.height = height
         self.label_font = label_font
@@ -35,22 +39,26 @@ class SystemPanel:
         }
 
     def set_trigger_rect(self, x, y, w, h):
+        """Aggiorna la zona cliccabile che apre il pannello sistemi."""
         self.trigger_rect = pygame.Rect(x, y, w, h)
         return self.trigger_rect
 
     def set_trigger_visible(self, visible):
+        """Mostra o nasconde il trigger del pannello."""
         self.trigger_visible = bool(visible)
         if not self.trigger_visible:
             self.is_trigger_hovered = False
         return self.trigger_visible
 
     def set_trigger_interactable(self, interactable):
+        """Abilita o disabilita l'interazione con il trigger."""
         self.trigger_interactable = bool(interactable)
         if not self.trigger_interactable:
             self.is_trigger_hovered = False
         return self.trigger_interactable
 
     def update_hover(self, mouse_pos):
+        """Aggiorna il feedback hover del trigger in base alla posizione del mouse."""
         self._mouse_pos = mouse_pos
         self.is_trigger_hovered = (
             self.trigger_visible
@@ -59,6 +67,7 @@ class SystemPanel:
         )
 
     def queue_trigger(self, game=None):
+        """Aggiunge il pulsante trigger alla coda grafica quando è visibile e interattivo."""
         if not self.trigger_visible:
             return
 
@@ -84,6 +93,7 @@ class SystemPanel:
         )
 
     def handle_event(self, event, lock_open=False):
+        """Gestisce click sul trigger, sui pulsanti interni e sulla chiusura forzata durante i reboot."""
         if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
             return False, None
 
@@ -111,6 +121,7 @@ class SystemPanel:
         return True, None
 
     def draw_overlay(self, surface, errors, reboots=None, now_ms=0, game=None):
+        """Disegna il pannello aperto con errori, countdown dei reboot e azioni disponibili."""
         if not self.is_open:
             return
 
@@ -145,16 +156,19 @@ class SystemPanel:
         self._button_rects["exit"] = self._draw_action(surface, self._ui_text("ui.system_exit", "exit", game), x, y)
 
     def _ui_text(self, key, fallback, game=None):
+        """Restituisce il testo tradotto se il gioco supporta la lingua, altrimenti usa il fallback."""
         if game is not None and hasattr(game, "tr"):
             return game.tr(key)
         return fallback
 
     def _draw_line(self, surface, text, color, x, y, title=False):
+        """Disegna una riga di testo normale o in stile titolo."""
         font = self.panel_title_font if title else self.panel_font
         label = font.render(text, True, color)
         surface.blit(label, (x, y))
 
     def _draw_error_line(self, surface, name, active, x, y, reboot_until=0, now_ms=0, game=None):
+        """Mostra lo stato di un sottosistema: errore, ok oppure countdown del reboot attivo."""
         base = self.panel_font.render(f">>> {name}", True, (120, 250, 120))
         surface.blit(base, (x, y))
 
@@ -171,6 +185,7 @@ class SystemPanel:
         surface.blit(state_label, (state_x, y))
 
     def _draw_action(self, surface, text, x, y, important=False):
+        """Disegna una voce cliccabile del menu reboot e restituisce la sua area di hit-test."""
         hit_rect = pygame.Rect(x - 8, y - 6, 520, 46)
         if hit_rect.collidepoint(self._mouse_pos):
             hover_bg = pygame.Surface((hit_rect.width, hit_rect.height), pygame.SRCALPHA)
@@ -183,3 +198,5 @@ class SystemPanel:
         rect = label.get_rect(topleft=(x, y))
         surface.blit(label, rect)
         return hit_rect
+
+

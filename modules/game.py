@@ -1,3 +1,5 @@
+﻿"""Classe principale del gioco: stato globale, risorse, inizializzazione sistemi e coordinamento dei mixin."""
+
 import os
 import json
 import sys
@@ -20,6 +22,7 @@ from modules.system_panel import SystemPanel
 
 
 class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
+    """Contiene stato globale, risorse caricate e le funzioni che coordinano il ciclo di gioco."""
     TRANSLATIONS = {
         "en": {
             "menu.new_game": "New Game",
@@ -148,6 +151,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
     }
 
     def __init__(self, width, height):
+        """Inizializza finestre, asset, audio, sistemi e tutte le variabili di runtime della partita."""
         self.width = int(width)
         self.height = int(height)
         self.max_night = 5
@@ -227,6 +231,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
             self._load_custom_cursor()
 
         def _pick_font(candidates):
+            """Sceglie il primo font disponibile tra quelli proposti."""
             for name in candidates:
                 try:
                     if pygame.font.match_font(name):
@@ -322,7 +327,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.intro_duration_ms = 2600
         self.outro_duration_ms = 2600
         self.music_fade_ms = 800
-        self.gameplay_ambience_volume = 0.42
+        self.gameplay_ambience_volume = 0.58
 
         self.audio.play_music(music_file=self.menu_music)
 
@@ -351,6 +356,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.call_mute_button_rect = pygame.Rect(0, 0, 0, 0)
         self.system_error_sound = "assets/audio/error.wav"
         self.vent_enter_sound = "assets/audio/vents.wav"
+        self.vent_enter_sound_volume = 0.95
         self.system_reboot_sound = "assets/audio/reboot.wav"
         self.office_entry_sounds = {
             "McQeen": "assets/audio/mqueen_in_office.wav",
@@ -467,6 +473,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self._load_menu_video()
 
     def _get_user_data_dir(self):
+        """Restituisce la cartella dati utente, separando i file salvati dal codice del progetto."""
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         if not bool(getattr(sys, "frozen", False)):
             return project_root
@@ -481,6 +488,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         return target_dir
 
     def tr(self, key, **kwargs):
+        """Recupera una stringa tradotta e la formatta con gli eventuali parametri ricevuti."""
         lang = str(getattr(self, "language", "en") or "en").lower()
         pack = self.TRANSLATIONS.get(lang, self.TRANSLATIONS.get("en", {}))
         fallback = self.TRANSLATIONS.get("en", {})
@@ -491,6 +499,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
             return str(template)
 
     def _read_settings_data(self):
+        """Legge il file delle impostazioni e ritorna un dizionario sicuro anche in caso di errore."""
         try:
             with open(self.settings_save_path, "r", encoding="utf-8") as handle:
                 payload = json.load(handle)
@@ -502,6 +511,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         return payload
 
     def _load_settings(self):
+        """Carica dal disco le impostazioni persistenti di display, cursore e lingua."""
         settings = self._read_settings_data()
         if not settings:
             return
@@ -534,6 +544,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
             self.language = language
 
     def save_settings(self):
+        """Scrive sul disco le impostazioni attuali del giocatore."""
         payload = {
             "schema_version": 1,
             "display_mode": self.display_mode,
@@ -550,6 +561,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         return True
 
     def _apply_display_mode(self):
+        """Applica la modalità finestra scelta e riallinea layout e dimensioni runtime."""
         mode = str(getattr(self, "display_mode", "windowed") or "windowed").lower()
         if mode not in self.display_mode_options:
             mode = "windowed"
@@ -598,6 +610,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self._sync_custom_cursor_visibility()
 
     def _refresh_runtime_layout(self):
+        """Ricostruisce i layout dipendenti dalla risoluzione corrente, inclusi camera e torcia."""
         if not hasattr(self, "base_background"):
             return
 
@@ -649,6 +662,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self._rebuild_settings_layout()
 
     def _rebuild_menu_layout(self):
+        """Ricalcola la geometria dei pulsanti del menu in base alla dimensione attuale della finestra."""
         button_width, button_height = 380, 78
         button_gap = 14
         left_x = int(self.width * 0.08)
@@ -660,6 +674,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.exit_button = pygame.Rect(left_x, start_y + ((button_height + button_gap) * 4), button_width, button_height)
 
     def _rebuild_settings_layout(self):
+        """Ricalcola il pannello impostazioni e posiziona i gruppi di opzioni."""
         panel_w = min(1320, int(self.width * 0.84))
         panel_h = min(820, int(self.height * 0.82))
         panel_x = (self.width - panel_w) // 2
@@ -699,6 +714,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         self.settings_back_button = pygame.Rect(panel_x + panel_w - 230, panel_y + panel_h - 88, 190, 52)
 
     def set_display_mode(self, mode):
+        """Aggiorna la modalità di visualizzazione e salva la scelta."""
         mode = str(mode).lower()
         if mode not in self.display_mode_options:
             return False
@@ -708,6 +724,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         return True
 
     def set_window_size(self, size):
+        """Cambia la dimensione della finestra e aggiorna layout e configurazione salvata."""
         if size not in self.window_size_options:
             return False
         self.window_size = tuple(size)
@@ -716,6 +733,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         return True
 
     def set_cursor_size(self, size):
+        """Cambia la dimensione del cursore e ricarica il puntatore personalizzato."""
         try:
             size = int(size)
         except (TypeError, ValueError):
@@ -737,6 +755,7 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         return loaded
 
     def set_language(self, language):
+        """Cambia lingua dell'interfaccia e aggiorna i testi usati nelle schermate."""
         language = str(language).lower()
         if language not in self.language_options:
             return False
@@ -747,9 +766,12 @@ class Game(GameFlowMixin, GameEventHandlersMixin, GameRenderingMixin):
         return True
 
     def toggle_fullscreen(self):
+        """Alterna tra modalità fullscreen e finestra standard."""
         if self.display_mode == "fullscreen":
             self.display_mode = "windowed"
         else:
             self.display_mode = "fullscreen"
         self._apply_display_mode()
         self.save_settings()
+
+

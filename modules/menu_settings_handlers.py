@@ -1,7 +1,10 @@
+"""Gestione dell'input per menu e schermata impostazioni."""
+
 import pygame
 
 
 def handle_menu_events(game, event):
+    """Gestisce tastiera e mouse nel menu principale, aprendo la partita o le altre schermate."""
     if event.type == pygame.KEYDOWN:
         if event.key == pygame.K_RETURN:
             if game.can_continue:
@@ -28,6 +31,7 @@ def handle_menu_events(game, event):
 
 
 def handle_settings_events(game, event):
+    """Gestisce i click e gli shortcut della schermata impostazioni, applicando subito le scelte."""
     if event.type == pygame.KEYDOWN:
         if event.key == pygame.K_ESCAPE:
             game.audio.play_sound(game.button_sound, volume=0.8)
@@ -65,3 +69,4 @@ def handle_settings_events(game, event):
             if game.set_language(language):
                 game.audio.play_sound(game.button_sound, volume=0.8)
             return
+
