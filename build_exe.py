@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parent
 ENTRYPOINT = ROOT / "main.py"
 DIST_DIR = ROOT / "dist"
 BUILD_DIR = ROOT / "build"
-SPEC_FILE = ROOT / "gioco_scuola.spec"
+SPEC_FILE = ROOT / "FiveNightsAtCorruptedLab.spec"
 EXE_ICON = ROOT / "assets" / "images" / "logo.ico"
 
 
@@ -41,7 +41,7 @@ def main() -> int:
         "--onefile",
         "--windowed",
         "--name",
-        "gioco_scuola",
+        "FiveNightsAtCorruptedLab",
         "--icon",
         str(EXE_ICON),
         "--add-data",
@@ -53,7 +53,7 @@ def main() -> int:
     if result.returncode != 0:
         return result.returncode
 
-    exe_path = DIST_DIR / "gioco_scuola.exe"
+    exe_path = DIST_DIR / "FiveNightsAtCorruptedLab.exe"
     print()
     print(f"Eseguibile creato in: {exe_path}")
     print(f"Spec file: {SPEC_FILE}")
